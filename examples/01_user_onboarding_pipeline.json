@@ -1,0 +1,164 @@
+{
+  "id": "wf-onboarding-sample",
+  "name": "User Onboarding & Notification Pipeline",
+  "nodes": [
+    {
+      "id": "node-trigger-1",
+      "type": "workflowNode",
+      "position": { "x": 60, "y": 140 },
+      "data": {
+        "label": "New User Event",
+        "type": "manual-trigger",
+        "category": "trigger",
+        "description": "Starts onboarding flow with applicant profile payload",
+        "icon": "Play",
+        "color": "#10b981",
+        "config": {
+          "payload": "{\n  \"userId\": \"usr_882\",\n  \"name\": \"Alice Chen\",\n  \"email\": \"alice@example.com\",\n  \"tier\": \"enterprise\",\n  \"verified\": true\n}"
+        },
+        "inputs": [],
+        "outputs": [
+          { "id": "output", "label": "Payload", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-condition-1",
+      "type": "workflowNode",
+      "position": { "x": 360, "y": 140 },
+      "data": {
+        "label": "Is Enterprise Tier?",
+        "type": "condition",
+        "category": "logic",
+        "description": "Branches workflow depending on customer subscription level",
+        "icon": "GitBranch",
+        "color": "#f59e0b",
+        "config": {
+          "leftOperand": "tier",
+          "operator": "equals",
+          "rightOperand": "enterprise"
+        },
+        "inputs": [
+          { "id": "input", "label": "User Event", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "true", "label": "True", "type": "any" },
+          { "id": "false", "label": "False", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-delay-1",
+      "type": "workflowNode",
+      "position": { "x": 660, "y": 60 },
+      "data": {
+        "label": "Rate Limit Delay",
+        "type": "delay",
+        "category": "utility",
+        "description": "Throttles onboarding notifications to prevent inbox flooding",
+        "icon": "Clock",
+        "color": "#8b5cf6",
+        "config": {
+          "delayMs": 500
+        },
+        "inputs": [
+          { "id": "input", "label": "Input", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Output", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-console-vip",
+      "type": "workflowNode",
+      "position": { "x": 960, "y": 60 },
+      "data": {
+        "label": "Dispatch VIP Welcome",
+        "type": "console-output",
+        "category": "utility",
+        "description": "Records welcome email event for enterprise tier customers",
+        "icon": "Terminal",
+        "color": "#ec4899",
+        "config": {
+          "level": "success",
+          "prefix": "VIP_ONBOARDING"
+        },
+        "inputs": [
+          { "id": "input", "label": "Data", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Passthrough", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-console-standard",
+      "type": "workflowNode",
+      "position": { "x": 660, "y": 240 },
+      "data": {
+        "label": "Standard Onboarding",
+        "type": "console-output",
+        "category": "utility",
+        "description": "Logs standard onboarding sequence for non-enterprise tiers",
+        "icon": "Terminal",
+        "color": "#ec4899",
+        "config": {
+          "level": "info",
+          "prefix": "STD_ONBOARDING"
+        },
+        "inputs": [
+          { "id": "input", "label": "Data", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Passthrough", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trig-to-cond",
+      "source": "node-trigger-1",
+      "target": "node-condition-1",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-cond-true-to-delay",
+      "source": "node-condition-1",
+      "target": "node-delay-1",
+      "sourceHandle": "true",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-delay-to-vip",
+      "source": "node-delay-1",
+      "target": "node-console-vip",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-cond-false-to-std",
+      "source": "node-condition-1",
+      "target": "node-console-standard",
+      "sourceHandle": "false",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    }
+  ],
+  "createdAt": 1740000000000,
+  "updatedAt": 1740000000000
+}

@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* ── Custom theme ───────────────────────────────────── */
+@theme {
+  --color-primary: #00d8ff;
+  --color-secondary: #8b5cf6;
+  --color-success: #22c55e;
+  --color-background: #1e1e2e;
+}
+
+/* ── Global resets ──────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Scrollbar styling (Webkit) ─────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3a4a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4a4a5a;
+}
+
+/* ── React Flow overrides ───────────────────────────── */
+.react-flow__background {
+  background-color: #0f0f17 !important;
+}
+.react-flow__minimap {
+  background-color: #1a1a2e !important;
+  border: 1px solid #2a2a3e !important;
+  border-radius: 8px !important;
+}
+.react-flow__controls {
+  border: 1px solid #2a2a3e !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: #1a1a2e !important;
+  border-bottom: 1px solid #2a2a3e !important;
+  fill: #9ca3af !important;
+}
+.react-flow__controls-button:hover {
+  background: #252538 !important;
+  fill: #e5e7eb !important;
+}
+.react-flow__edge-path {
+  stroke: #4a4a6a !important;
+  stroke-width: 2 !important;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: #8b5cf6 !important;
+}
+.react-flow__connection-line {
+  stroke: #8b5cf6 !important;
+  stroke-width: 2 !important;
+}
+.react-flow__handle {
+  width: 10px !important;
+  height: 10px !important;
+  border: 2px solid #4a4a6a !important;
+  background: #1a1a2e !important;
+}
+.react-flow__handle:hover {
+  border-color: #8b5cf6 !important;
+  background: #8b5cf640 !important;
+}

@@ -1,0 +1,166 @@
+{
+  "id": "wf-ecommerce-order-flow",
+  "name": "E-Commerce Order Validation & Routing",
+  "nodes": [
+    {
+      "id": "node-order-trigger",
+      "type": "workflowNode",
+      "position": { "x": 80, "y": 150 },
+      "data": {
+        "label": "Checkout Order Event",
+        "type": "manual-trigger",
+        "category": "trigger",
+        "description": "Simulates an inbound checkout webhook with items and subtotal",
+        "icon": "Play",
+        "color": "#10b981",
+        "config": {
+          "payload": "{\n  \"orderId\": \"ord_5521\",\n  \"customer\": \"Marcus Brody\",\n  \"totalAmount\": 149.99,\n  \"itemsCount\": 3,\n  \"currency\": \"USD\"\n}"
+        },
+        "inputs": [],
+        "outputs": [
+          { "id": "output", "label": "Order JSON", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-order-transform",
+      "type": "workflowNode",
+      "position": { "x": 380, "y": 150 },
+      "data": {
+        "label": "Extract Order Total",
+        "type": "transform-data",
+        "category": "data",
+        "description": "Extracts numeric totalAmount property for threshold evaluation",
+        "icon": "Binary",
+        "color": "#06b6d4",
+        "config": {
+          "mode": "property-path",
+          "propertyPath": "totalAmount",
+          "outputKey": "orderTotal"
+        },
+        "inputs": [
+          { "id": "input", "label": "Order", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Extracted", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-order-condition",
+      "type": "workflowNode",
+      "position": { "x": 680, "y": 150 },
+      "data": {
+        "label": "Order Total > $100?",
+        "type": "condition",
+        "category": "logic",
+        "description": "Checks if order qualifies for free express shipping",
+        "icon": "GitBranch",
+        "color": "#f59e0b",
+        "config": {
+          "leftOperand": "orderTotal",
+          "operator": "greater_than",
+          "rightOperand": "100"
+        },
+        "inputs": [
+          { "id": "input", "label": "Total Amount", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "true", "label": "Qualifies (>100)", "type": "any" },
+          { "id": "false", "label": "Standard (<=100)", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-console-express",
+      "type": "workflowNode",
+      "position": { "x": 980, "y": 80 },
+      "data": {
+        "label": "Assign Express Courier",
+        "type": "console-output",
+        "category": "utility",
+        "description": "Routes order to priority logistics queue",
+        "icon": "Terminal",
+        "color": "#ec4899",
+        "config": {
+          "level": "success",
+          "prefix": "PRIORITY_SHIPPING"
+        },
+        "inputs": [
+          { "id": "input", "label": "Order Data", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Passthrough", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-console-ground",
+      "type": "workflowNode",
+      "position": { "x": 980, "y": 240 },
+      "data": {
+        "label": "Assign Standard Ground",
+        "type": "console-output",
+        "category": "utility",
+        "description": "Routes order to standard postal dispatch",
+        "icon": "Terminal",
+        "color": "#ec4899",
+        "config": {
+          "level": "info",
+          "prefix": "STANDARD_GROUND"
+        },
+        "inputs": [
+          { "id": "input", "label": "Order Data", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Passthrough", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trig-to-tf",
+      "source": "node-order-trigger",
+      "target": "node-order-transform",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-tf-to-cond",
+      "source": "node-order-transform",
+      "target": "node-order-condition",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-cond-to-express",
+      "source": "node-order-condition",
+      "target": "node-console-express",
+      "sourceHandle": "true",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-cond-to-ground",
+      "source": "node-order-condition",
+      "target": "node-console-ground",
+      "sourceHandle": "false",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    }
+  ],
+  "createdAt": 1740000000000,
+  "updatedAt": 1740000000000
+}

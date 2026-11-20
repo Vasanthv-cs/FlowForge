@@ -1,0 +1,166 @@
+{
+  "id": "wf-data-enrichment-sample",
+  "name": "Data Ingestion & Transform Pipeline",
+  "nodes": [
+    {
+      "id": "node-ingest-trigger",
+      "type": "workflowNode",
+      "position": { "x": 80, "y": 140 },
+      "data": {
+        "label": "Audit Log Ingestion",
+        "type": "manual-trigger",
+        "category": "trigger",
+        "description": "Ingests system telemetry logs with nested metadata",
+        "icon": "Play",
+        "color": "#10b981",
+        "config": {
+          "payload": "{\n  \"eventId\": \"evt_99182\",\n  \"service\": \"auth-service\",\n  \"metadata\": {\n    \"region\": \"us-east-1\",\n    \"statusCode\": 200,\n    \"latencyMs\": 42\n  }\n}"
+        },
+        "inputs": [],
+        "outputs": [
+          { "id": "output", "label": "Telemetry", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-pick-transform",
+      "type": "workflowNode",
+      "position": { "x": 380, "y": 140 },
+      "data": {
+        "label": "Extract Region",
+        "type": "transform-data",
+        "category": "data",
+        "description": "Extracts nested region property from metadata payload",
+        "icon": "Binary",
+        "color": "#06b6d4",
+        "config": {
+          "mode": "property-path",
+          "propertyPath": "metadata.region",
+          "outputKey": "serverRegion"
+        },
+        "inputs": [
+          { "id": "input", "label": "Raw Event", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Region", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-region-condition",
+      "type": "workflowNode",
+      "position": { "x": 680, "y": 140 },
+      "data": {
+        "label": "Is US-East Region?",
+        "type": "condition",
+        "category": "logic",
+        "description": "Routes logs based on geographic deployment zone",
+        "icon": "GitBranch",
+        "color": "#f59e0b",
+        "config": {
+          "leftOperand": "serverRegion",
+          "operator": "equals",
+          "rightOperand": "us-east-1"
+        },
+        "inputs": [
+          { "id": "input", "label": "Region", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "true", "label": "US East", "type": "any" },
+          { "id": "false", "label": "Other Region", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-console-east",
+      "type": "workflowNode",
+      "position": { "x": 980, "y": 80 },
+      "data": {
+        "label": "Log East Metric",
+        "type": "console-output",
+        "category": "utility",
+        "description": "Emits telemetry to East Coast monitoring sink",
+        "icon": "Terminal",
+        "color": "#ec4899",
+        "config": {
+          "level": "info",
+          "prefix": "US_EAST_CLUSTER"
+        },
+        "inputs": [
+          { "id": "input", "label": "Event", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Passthrough", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    },
+    {
+      "id": "node-console-global",
+      "type": "workflowNode",
+      "position": { "x": 980, "y": 240 },
+      "data": {
+        "label": "Log Global Metric",
+        "type": "console-output",
+        "category": "utility",
+        "description": "Emits telemetry to Global monitoring sink",
+        "icon": "Terminal",
+        "color": "#ec4899",
+        "config": {
+          "level": "info",
+          "prefix": "GLOBAL_CLUSTER"
+        },
+        "inputs": [
+          { "id": "input", "label": "Event", "type": "any" }
+        ],
+        "outputs": [
+          { "id": "output", "label": "Passthrough", "type": "any" }
+        ],
+        "status": "idle"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-ingest-to-pick",
+      "source": "node-ingest-trigger",
+      "target": "node-pick-transform",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-pick-to-region-cond",
+      "source": "node-pick-transform",
+      "target": "node-region-condition",
+      "sourceHandle": "output",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-cond-to-east",
+      "source": "node-region-condition",
+      "target": "node-console-east",
+      "sourceHandle": "true",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    },
+    {
+      "id": "e-cond-to-global",
+      "source": "node-region-condition",
+      "target": "node-console-global",
+      "sourceHandle": "false",
+      "targetHandle": "input",
+      "type": "smoothstep",
+      "animated": true
+    }
+  ],
+  "createdAt": 1740000000000,
+  "updatedAt": 1740000000000
+}
