@@ -9,10 +9,23 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@flowforge/workflow-schema': fileURLToPath(
+        new URL('./packages/workflow-schema/src/index.ts', import.meta.url),
+      ),
+      '@flowforge/node-sdk': fileURLToPath(
+        new URL('./packages/node-sdk/src/index.ts', import.meta.url),
+      ),
+      '@flowforge/shared': fileURLToPath(
+        new URL('./packages/shared/src/index.ts', import.meta.url),
+      ),
+      '@flowforge/workflow-core': fileURLToPath(
+        new URL('./packages/workflow-core/src/index.ts', import.meta.url),
+      ),
     },
   },
   test: {
     environment: 'jsdom',
     globals: true,
+    exclude: ['**/e2e/**', '**/node_modules/**', '**/dist/**', 'playwright.config.ts'],
   },
 });

@@ -3,7 +3,7 @@
     "target": "es2023",
     "module": "esnext",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    "types": ["vite/client", "node"],
     "jsx": "react-jsx",
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
@@ -26,8 +26,12 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@flowforge/workflow-schema": ["./packages/workflow-schema/src/index.ts"],
+      "@flowforge/node-sdk": ["./packages/node-sdk/src/index.ts"],
+      "@flowforge/shared": ["./packages/shared/src/index.ts"],
+      "@flowforge/workflow-core": ["./packages/workflow-core/src/index.ts"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "packages"]
 }

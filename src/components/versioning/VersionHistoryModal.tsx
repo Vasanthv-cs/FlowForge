@@ -8,10 +8,15 @@ import {
   Layers,
   GitBranch,
   Check,
+  Cloud,
+  HardDrive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useWorkflowStore } from '@/store/workflowStore';
+import { useWorkspaceStore } from '@/store/workspaceStore';
 import { idbStorage } from '@/lib/indexedDb';
+import { cloudWorkflowService } from '@/services/cloudWorkflowService';
+import type { SavedWorkflow } from '@/store/persistence';
 import type { WorkflowVersion } from '@/types/testLab';
 import type { WorkflowNode, WorkflowEdge } from '@/types/workflow';
 
@@ -25,8 +30,12 @@ export function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProp
   const workflowName = useWorkflowStore((s) => s.workflowName);
   const nodes = useWorkflowStore((s) => s.nodes);
   const edges = useWorkflowStore((s) => s.edges);
+  const isCloudWorkflow = useWorkflowStore((s) => s.isCloudWorkflow);
+  const workspaceId = useWorkflowStore((s) => s.workspaceId);
   const loadWorkflowFromData = useWorkflowStore((s) => s.loadWorkflowFromData);
   const addLog = useWorkflowStore((s) => s.addLog);
+
+  const canEditWorkflows = useWorkspaceStore((s) => s.canEditWorkflows());
 
   const [versions, setVersions] = useState<WorkflowVersion[]>([]);
   const [versionTag, setVersionTag] = useState('');
@@ -38,38 +47,122 @@ export function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProp
   useEffect(() => {
     if (!isOpen) return;
     (async () => {
+      if (isCloudWorkflow) {
+        const { data } = await cloudWorkflowService.listVersions(workflowId);
+        if (data) {
+          const mapped: WorkflowVersion[] = data.map((v) => ({
+            id: v.id,
+            workflowId: v.workflowId,
+            versionTag: v.name || `v${v.versionNumber}.0`,
+            description: `Snapshot v${v.versionNumber}`,
+            nodesCount: v.definition?.nodes?.length || 0,
+            edgesCount: v.definition?.edges?.length || 0,
+            nodes: v.definition?.nodes || [],
+            edges: v.definition?.edges || [],
+            savedAt: new Date(v.createdAt).getTime(),
+          }));
+          setVersions(mapped);
+          setVersionTag(`v${data.length + 1}.0`);
+          return;
+        }
+      }
+
       const list = await idbStorage.listVersions(workflowId);
       setVersions(list);
       setVersionTag(`v1.${list.length}`);
     })();
-  }, [isOpen, workflowId]);
+  }, [isOpen, workflowId, isCloudWorkflow]);
 
   const handleCreateSnapshot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!versionTag.trim()) return;
 
+    if (isCloudWorkflow && !canEditWorkflows) {
+      addLog({
+        level: 'warn',
+        message: 'Permission denied: Viewers cannot create workflow snapshots.',
+      });
+      return;
+    }
+
     setIsCreating(true);
     try {
-      const newVersion: WorkflowVersion = {
-        id: `ver-${Date.now()}`,
-        workflowId,
-        versionTag: versionTag.trim(),
-        description: description.trim() || 'Manual version snapshot',
-        nodesCount: nodes.length,
-        edgesCount: edges.length,
+      const currentDefinition: SavedWorkflow = {
+        id: workflowId,
+        name: workflowName,
         nodes: JSON.parse(JSON.stringify(nodes)),
         edges: JSON.parse(JSON.stringify(edges)),
-        savedAt: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
 
-      await idbStorage.saveVersion(newVersion);
-      const updated = await idbStorage.listVersions(workflowId);
-      setVersions(updated);
-      setVersionTag(`v1.${updated.length}`);
+      if (isCloudWorkflow) {
+        const { data: cloudVer, error } = await cloudWorkflowService.createVersion(
+          workflowId,
+          versionTag.trim(),
+          currentDefinition,
+        );
+
+        if (error || !cloudVer) {
+          addLog({
+            level: 'error',
+            message: `Failed to create cloud version snapshot: ${error || 'Unknown error'}`,
+          });
+          return;
+        }
+
+        const localCopy: WorkflowVersion = {
+          id: cloudVer.id,
+          workflowId,
+          versionTag: cloudVer.name || `v${cloudVer.versionNumber}.0`,
+          description: description.trim() || `Snapshot v${cloudVer.versionNumber}`,
+          nodesCount: nodes.length,
+          edgesCount: edges.length,
+          nodes: JSON.parse(JSON.stringify(nodes)),
+          edges: JSON.parse(JSON.stringify(edges)),
+          savedAt: new Date(cloudVer.createdAt).getTime(),
+        };
+        await idbStorage.saveVersion(localCopy);
+
+        const { data: updatedList } = await cloudWorkflowService.listVersions(workflowId);
+        if (updatedList) {
+          const mapped: WorkflowVersion[] = updatedList.map((v) => ({
+            id: v.id,
+            workflowId: v.workflowId,
+            versionTag: v.name || `v${v.versionNumber}.0`,
+            description: `Snapshot v${v.versionNumber}`,
+            nodesCount: v.definition?.nodes?.length || 0,
+            edgesCount: v.definition?.edges?.length || 0,
+            nodes: v.definition?.nodes || [],
+            edges: v.definition?.edges || [],
+            savedAt: new Date(v.createdAt).getTime(),
+          }));
+          setVersions(mapped);
+          setVersionTag(`v${updatedList.length + 1}.0`);
+        }
+      } else {
+        const newVersion: WorkflowVersion = {
+          id: `ver-${Date.now()}`,
+          workflowId,
+          versionTag: versionTag.trim(),
+          description: description.trim() || 'Manual version snapshot',
+          nodesCount: nodes.length,
+          edgesCount: edges.length,
+          nodes: JSON.parse(JSON.stringify(nodes)),
+          edges: JSON.parse(JSON.stringify(edges)),
+          savedAt: Date.now(),
+        };
+
+        await idbStorage.saveVersion(newVersion);
+        const updated = await idbStorage.listVersions(workflowId);
+        setVersions(updated);
+        setVersionTag(`v1.${updated.length}`);
+      }
+
       setDescription('');
       addLog({
         level: 'info',
-        message: `Created snapshot "${newVersion.versionTag}" for workflow "${workflowName}".`,
+        message: `Created snapshot "${versionTag.trim()}" for workflow "${workflowName}".`,
       });
     } finally {
       setIsCreating(false);
@@ -79,14 +172,17 @@ export function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProp
   const handleRestore = useCallback(
     (ver: WorkflowVersion) => {
       const now = Date.now();
-      loadWorkflowFromData({
-        id: workflowId,
-        name: workflowName,
-        nodes: ver.nodes as WorkflowNode[],
-        edges: ver.edges as WorkflowEdge[],
-        createdAt: ver.savedAt ?? now,
-        updatedAt: now,
-      });
+      loadWorkflowFromData(
+        {
+          id: workflowId,
+          name: workflowName,
+          nodes: ver.nodes as WorkflowNode[],
+          edges: ver.edges as WorkflowEdge[],
+          createdAt: ver.savedAt ?? now,
+          updatedAt: now,
+        },
+        { isCloud: isCloudWorkflow, workspaceId },
+      );
       setRestoredId(ver.id);
       addLog({
         level: 'success',
@@ -97,7 +193,7 @@ export function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProp
         onClose();
       }, 800);
     },
-    [workflowId, workflowName, loadWorkflowFromData, addLog, onClose],
+    [workflowId, workflowName, isCloudWorkflow, workspaceId, loadWorkflowFromData, addLog, onClose],
   );
 
   if (!isOpen) return null;
@@ -112,9 +208,20 @@ export function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProp
               <History className="h-4 w-4" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-gray-100 flex items-center gap-2">
-                Workflow Version History
-              </h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-gray-100">
+                  Workflow Version History
+                </h2>
+                {isCloudWorkflow ? (
+                  <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                    <Cloud className="h-2.5 w-2.5" /> Cloud
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.2 rounded bg-gray-800 text-gray-400 border border-gray-700 font-medium">
+                    <HardDrive className="h-2.5 w-2.5" /> Local
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-gray-400">
                 Snapshots & rollbacks for: <span className="text-gray-200">{workflowName}</span>
               </p>
@@ -148,25 +255,32 @@ export function VersionHistoryModal({ isOpen, onClose }: VersionHistoryModalProp
                 value={versionTag}
                 onChange={(e) => setVersionTag(e.target.value)}
                 required
-                className="w-28 rounded-md border border-[#2a2a3e] bg-[#1a1a2e] px-2.5 py-1.5 text-xs font-mono text-gray-100 focus:border-indigo-500 focus:outline-none"
+                disabled={isCloudWorkflow && !canEditWorkflows}
+                className="w-28 rounded-md border border-[#2a2a3e] bg-[#1a1a2e] px-2.5 py-1.5 text-xs font-mono text-gray-100 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
               />
               <input
                 type="text"
                 placeholder="Description of changes (e.g., Added validation and condition checks)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="flex-1 rounded-md border border-[#2a2a3e] bg-[#1a1a2e] px-2.5 py-1.5 text-xs text-gray-100 focus:border-indigo-500 focus:outline-none"
+                disabled={isCloudWorkflow && !canEditWorkflows}
+                className="flex-1 rounded-md border border-[#2a2a3e] bg-[#1a1a2e] px-2.5 py-1.5 text-xs text-gray-100 focus:border-indigo-500 focus:outline-none disabled:opacity-50"
               />
               <Button
                 type="submit"
                 variant="default"
                 size="sm"
-                disabled={isCreating || !versionTag.trim()}
+                disabled={isCreating || !versionTag.trim() || (isCloudWorkflow && !canEditWorkflows)}
                 className="shrink-0"
               >
                 Snapshot Current
               </Button>
             </div>
+            {isCloudWorkflow && !canEditWorkflows && (
+              <p className="text-[10px] text-amber-400 italic">
+                Read-only: You have Viewer role in this workspace and cannot create version snapshots.
+              </p>
+            )}
           </form>
         </div>
 

@@ -8,7 +8,6 @@ import {
   Info,
   AlertCircle,
   CheckCircle2,
-  Clock,
   Terminal,
   Activity,
   Search,
@@ -19,6 +18,7 @@ import { cn } from '@/lib/utils';
 import type { LogLevel } from '@/types/workflow';
 import { ExecutionTimeline } from '@/components/debugger/ExecutionTimeline';
 import { ExecutionSummaryBar } from '@/components/debugger/ExecutionSummaryBar';
+import { ExecutionHistoryPanel } from '@/components/debugger/ExecutionHistoryPanel';
 
 const logIconMap: Record<LogLevel, React.ReactNode> = {
   info: <Info className="h-3.5 w-3.5 text-blue-400" />,
@@ -272,56 +272,8 @@ export function BottomPanel() {
           </div>
         )}
 
-        {/* ── TAB 4: PAST RUNS ── */}
-        {activeTab === 'history' && (
-          <div className="text-xs">
-            {executionHistory.length === 0 ? (
-              <div className="flex items-center justify-center h-full py-8">
-                <p className="text-gray-600 text-xs">
-                  No previous execution records. Click "Run" to execute your workflow.
-                </p>
-              </div>
-            ) : (
-              executionHistory.map((run) => (
-                <div
-                  key={run.executionId}
-                  onClick={() => {
-                    setSelectedRunId(run.executionId);
-                    setActiveTab('timeline');
-                  }}
-                  className="flex items-center justify-between border-b border-[#1a1a2e] px-3 py-2 hover:bg-[#1a1a2e]/50 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    {run.success ? (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0" />
-                    )}
-                    <div>
-                      <span className="font-mono text-[11px] text-gray-200">
-                        {run.executionId}
-                      </span>
-                      <p className="text-[10px] text-gray-500">
-                        {new Date(run.startedAt).toLocaleString()}
-                        {run.error && <span className="text-red-400 ml-1.5">• {run.error}</span>}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-[11px] font-mono text-gray-400">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-gray-500" />
-                      {run.durationMs}ms
-                    </span>
-                    <span className="rounded bg-[#252538] px-1.5 py-0.5 text-[10px] text-gray-300">
-                      {run.nodesExecuted} nodes
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        )}
+        {/* ── TAB 4: PAST RUNS & CLOUD EXECUTION HISTORY ── */}
+        {activeTab === 'history' && <ExecutionHistoryPanel />}
       </div>
     </div>
   );

@@ -1,5 +1,1 @@
-import type { ExecutionContext, NodeExecutionResult } from '../types';
-
-export interface NodeExecutor {
-  execute(context: ExecutionContext): Promise<NodeExecutionResult>;
-}
+export * from '@flowforge/node-sdk';

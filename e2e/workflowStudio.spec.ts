@@ -34,6 +34,12 @@ test.describe('FlowForge Visual Workflow Programming Studio', () => {
     // Open Workflows dropdown
     await page.getByRole('button', { name: /Workflows/i }).click();
 
+    // Ensure Local tab is active
+    const localTab = page.getByRole('button', { name: /^Local/i });
+    if (await localTab.isVisible()) {
+      await localTab.click();
+    }
+
     // Click Load Onboarding Demo Pipeline
     await page.getByRole('button', { name: /Load Onboarding Demo Pipeline/i }).click();
 
@@ -52,6 +58,10 @@ test.describe('FlowForge Visual Workflow Programming Studio', () => {
   test('executes demo pipeline, animates progress, and displays debugger logs', async ({ page }) => {
     // Load onboarding demo pipeline
     await page.getByRole('button', { name: /Workflows/i }).click();
+    const localTab = page.getByRole('button', { name: /^Local/i });
+    if (await localTab.isVisible()) {
+      await localTab.click();
+    }
     await page.getByRole('button', { name: /Load Onboarding Demo Pipeline/i }).click();
 
     // Click Run button
@@ -73,6 +83,10 @@ test.describe('FlowForge Visual Workflow Programming Studio', () => {
   test('inspects node execution debugger and displays input/output JSON', async ({ page }) => {
     // Load onboarding demo pipeline
     await page.getByRole('button', { name: /Workflows/i }).click();
+    const localTab = page.getByRole('button', { name: /^Local/i });
+    if (await localTab.isVisible()) {
+      await localTab.click();
+    }
     await page.getByRole('button', { name: /Load Onboarding Demo Pipeline/i }).click();
 
     // Run workflow
@@ -114,5 +128,70 @@ test.describe('FlowForge Visual Workflow Programming Studio', () => {
 
     // Close modal
     await page.locator('button:has(svg.lucide-x)').first().click();
+  });
+
+  test('opens AuthModal from TopNav and navigates between Sign In, Sign Up, and Reset Password', async ({ page }) => {
+    // Click Sign In button in TopNav
+    await page.getByRole('button', { name: 'Sign In', exact: true }).click();
+
+    // Verify modal elements
+    await expect(page.getByText('Sign in to FlowForge')).toBeVisible();
+    await expect(page.getByPlaceholder('developer@flowforge.dev')).toBeVisible();
+    await expect(page.getByRole('button', { name: /Continue with Google/i })).toBeVisible();
+
+    // Switch to Sign Up mode
+    await page.getByRole('button', { name: 'Sign up', exact: true }).click();
+    await expect(page.getByText('Create your account')).toBeVisible();
+    await expect(page.getByPlaceholder('e.g. Alex Morgan')).toBeVisible();
+
+    // Switch back to Sign In mode
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page.getByText('Sign in to FlowForge')).toBeVisible();
+
+    // Switch to Reset Password mode
+    await page.getByRole('button', { name: 'Forgot password?', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Reset your password' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Send Reset Link/i })).toBeVisible();
+
+    // Close modal
+    await page.locator('button:has(svg.lucide-x)').first().click();
+    await expect(page.getByRole('heading', { name: 'Reset your password' })).not.toBeVisible();
+  });
+
+  test('interacts with WorkspaceSelector and shows workspace options', async ({ page }) => {
+    // Click workspace selector in TopNav
+    const workspaceBtn = page.getByRole('button', { name: /Default Workspace|Personal Workspace/i }).first();
+    await expect(workspaceBtn).toBeVisible();
+    await workspaceBtn.click();
+
+    // Verify workspace dropdown menu
+    await expect(page.getByText(/Create Workspace/i)).toBeVisible();
+    await expect(page.getByText(/Workspaces/i).first()).toBeVisible();
+  });
+
+  test('displays save status and toggles cloud and local workflows dropdown tabs', async ({ page }) => {
+    // 1. Verify Save button is in Saved state initially
+    await expect(page.getByText(/Saved/i).first()).toBeVisible();
+
+    // 2. Open Workflows dropdown
+    await page.getByRole('button', { name: /Workflows/i }).click();
+
+    // 3. Verify Cloud and Local tabs are rendered
+    const cloudTab = page.getByRole('button', { name: /^Cloud/i });
+    const localTab = page.getByRole('button', { name: /^Local/i });
+    await expect(cloudTab).toBeVisible();
+    await expect(localTab).toBeVisible();
+
+    // 4. Switch to Cloud tab
+    await cloudTab.click();
+    await expect(page.getByText(/Sign in to save and access cloud workflows|No cloud workflows/i).first()).toBeVisible();
+
+    // 5. Switch to Local tab
+    await localTab.click();
+    await expect(page.getByText(/New Blank Local Workflow/i)).toBeVisible();
+    await expect(page.getByText(/Load Onboarding Demo Pipeline/i)).toBeVisible();
+
+    // 6. Close dropdown by clicking Workflows button again
+    await page.getByRole('button', { name: /Workflows/i }).click();
   });
 });
