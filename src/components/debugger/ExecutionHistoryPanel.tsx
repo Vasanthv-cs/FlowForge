@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Clock,
   RefreshCw,
   ArrowLeft,
@@ -109,7 +110,19 @@ export function ExecutionHistoryPanel() {
     }));
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, errorMessage?: string | null) => {
+    const isInterrupted =
+      status === 'interrupted' ||
+      (status === 'failed' && Boolean(errorMessage && errorMessage.toLowerCase().includes('interrupted')));
+
+    if (isInterrupted) {
+      return (
+        <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+          <AlertTriangle className="h-3 w-3" /> Interrupted
+        </span>
+      );
+    }
+
     switch (status) {
       case 'success':
         return (
@@ -163,7 +176,7 @@ export function ExecutionHistoryPanel() {
             <span className="font-mono text-gray-300 font-medium">
               Run: {selectedExecutionId.slice(0, 8)}...
             </span>
-            {details && getStatusBadge(details.execution.status)}
+            {details && getStatusBadge(details.execution.status, details.execution.errorMessage)}
           </div>
 
           {details && (
@@ -407,7 +420,7 @@ export function ExecutionHistoryPanel() {
           <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mr-1">
             Status:
           </span>
-          {['all', 'success', 'failed', 'running', 'cancelled'].map((st) => (
+          {['all', 'success', 'failed', 'running', 'cancelled', 'interrupted'].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -463,7 +476,7 @@ export function ExecutionHistoryPanel() {
                 className="flex items-center justify-between p-2.5 hover:bg-[#181828] cursor-pointer transition-colors"
               >
                 <div className="flex items-center gap-2.5">
-                  {getStatusBadge(exec.status)}
+                  {getStatusBadge(exec.status, exec.errorMessage)}
                   <div>
                     <div className="flex items-center gap-1.5 font-mono text-gray-300">
                       <span>{exec.id.slice(0, 8)}...</span>

@@ -20,8 +20,8 @@ import { WorkflowEngine } from '@/engine/WorkflowEngine';
 import type { NodeExecutionRecord, WorkflowRunResult } from '@/engine/types';
 import { WorkflowPersistence, type SavedWorkflow } from './persistence';
 import { cloudWorkflowService, isUUID, generateUUID } from '@/services/cloudWorkflowService';
-import { executionService } from '@/services/executionService';
 import { useWorkspaceStore } from '@/store/workspaceStore';
+import { useAuthStore } from '@/store/authStore';
 import { idbStorage } from '@/lib/indexedDb';
 
 export type SaveStatus = 'saved' | 'saving' | 'unsaved' | 'error';
@@ -800,30 +800,180 @@ export const useWorkflowStore = create<FullWorkflowStore>((set, get) => ({
     });
 
     const isCloud = state.isCloudWorkflow && isUUID(state.workflowId);
+    const session = useAuthStore.getState().session;
 
-    // 4. Record execution start in PostgreSQL with snapshot
-    if (isCloud) {
-      const definitionSnapshot: SavedWorkflow = {
-        id: state.workflowId,
-        name: state.workflowName,
-        nodes: JSON.parse(JSON.stringify(state.nodes)),
-        edges: JSON.parse(JSON.stringify(state.edges)),
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
+    // 4. Cloud Workflow: Execute on Fastify Backend API with SSRF protection when signed in
+    if (isCloud && state.workspaceId && session?.access_token) {
+      if (!state.isSaved || state.saveStatus === 'unsaved') {
+        await state.saveWorkflow();
+      }
 
-      executionService
-        .startExecution({
-          executionId,
-          workflowId: state.workflowId,
-          workflowDefinition: definitionSnapshot,
-          triggerType: 'manual',
-        })
-        .catch((err) => {
-          console.warn('Execution persistence start failed:', err);
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+      try {
+        const executeRes = await fetch(
+          `${apiUrl}/api/workspaces/${state.workspaceId}/workflows/${state.workflowId}/execute`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ triggerPayload: {} }),
+          }
+        );
+
+        if (!executeRes.ok) {
+          const errData = await executeRes.json().catch(() => ({}));
+          const errMsg = (errData as { message?: string }).message || `Execution initiation failed (status ${executeRes.status})`;
+          state.addLog({ level: 'error', message: `[Server API] ${errMsg}` });
+          set({ isRunning: false });
+          throw new Error(errMsg);
+        }
+
+        const { executionId: serverExecId } = await executeRes.json();
+        set({ executionId: serverExecId });
+        state.addLog({
+          level: 'info',
+          message: `[Server API] Workflow execution initiated on server (ID: ${serverExecId}).`,
         });
+
+        // Poll execution details until terminal state
+        let isDone = false;
+        let attempts = 0;
+        const maxAttempts = 75; // 60s max
+        let finalResult: WorkflowRunResult | null = null;
+
+        while (!isDone && attempts < maxAttempts) {
+          await new Promise((res) => setTimeout(res, 800));
+          attempts++;
+
+          if (!get().isRunning) break;
+
+          try {
+            const detailRes = await fetch(
+              `${apiUrl}/api/workspaces/${state.workspaceId}/executions/${serverExecId}`,
+              {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+              }
+            );
+
+            if (!detailRes.ok) continue;
+
+            const { execution } = await detailRes.json();
+            if (!execution) continue;
+
+            // Update canvas node states
+            if (Array.isArray(execution.nodeExecutions)) {
+              const records: Record<string, NodeExecutionRecord> = {};
+              const nodeStatusMap = new Map<string, string>();
+
+              for (const ne of execution.nodeExecutions) {
+                nodeStatusMap.set(ne.nodeId, ne.status);
+                records[ne.nodeId] = {
+                  nodeId: ne.nodeId,
+                  nodeType: ne.nodeType,
+                  nodeLabel: ne.nodeLabel,
+                  state: ne.status,
+                  inputData: ne.inputPayload,
+                  outputData: ne.outputPayload,
+                  error: ne.errorMessage,
+                  durationMs: ne.durationMs,
+                  startedAt: ne.startedAt ? new Date(ne.startedAt).getTime() : undefined,
+                  completedAt: ne.finishedAt ? new Date(ne.finishedAt).getTime() : undefined,
+                };
+              }
+
+              set((s) => ({
+                nodes: s.nodes.map((n) => {
+                  const st = nodeStatusMap.get(n.id);
+                  return st ? { ...n, data: { ...n.data, status: st as NodeStatus } } : n;
+                }),
+                nodeRecords: { ...s.nodeRecords, ...records },
+              }));
+            }
+
+            if (['success', 'failed', 'cancelled'].includes(execution.status)) {
+              isDone = true;
+              const isSuccess = execution.status === 'success';
+              set({ isRunning: false });
+
+              get().addLog({
+                level: isSuccess ? 'info' : 'error',
+                message: `[Server API] Workflow finished with status "${execution.status}"${
+                  execution.errorMessage ? `: ${execution.errorMessage}` : ''
+                }.`,
+              });
+
+              const completedRunResult: WorkflowRunResult = {
+                executionId: serverExecId,
+                success: isSuccess,
+                startedAt: execution.startedAt ? new Date(execution.startedAt).getTime() : Date.now(),
+                completedAt: execution.finishedAt ? new Date(execution.finishedAt).getTime() : Date.now(),
+                durationMs: execution.durationMs || 0,
+                nodesExecuted: execution.nodeExecutions?.length || 0,
+                nodeRecords: get().nodeRecords,
+                finalOutputs: ((execution.outputPayload as Record<string, unknown>) || {}) as Record<string, unknown>,
+                timeline: (
+                  (execution.events || []) as Array<{
+                    id: string | number;
+                    eventType: string;
+                    createdAt: string;
+                    message: string;
+                    nodeId?: string | null;
+                  }>
+                ).map((ev) => ({
+                  id: String(ev.id),
+                  type: (ev.eventType || 'node_completed') as import('@flowforge/workflow-core').TimelineEvent['type'],
+                  timestamp: new Date(ev.createdAt).getTime(),
+                  message: ev.message,
+                  nodeId: ev.nodeId ?? undefined,
+                })),
+                error: execution.errorMessage,
+              };
+
+              finalResult = completedRunResult;
+
+              set((s) => ({
+                executionHistory: [completedRunResult, ...s.executionHistory.slice(0, 19)],
+              }));
+
+              return completedRunResult;
+            }
+          } catch (pollErr) {
+            console.warn('[WorkflowStore] Polling execution failed:', pollErr);
+          }
+        }
+
+        set({ isRunning: false });
+        if (finalResult) return finalResult;
+
+        const timeoutResult: WorkflowRunResult = {
+          executionId: serverExecId,
+          success: false,
+          startedAt: Date.now() - attempts * 800,
+          completedAt: Date.now(),
+          durationMs: attempts * 800,
+          nodesExecuted: Object.keys(get().nodeRecords).length,
+          nodeRecords: get().nodeRecords,
+          finalOutputs: {},
+          timeline: [],
+          error: 'Execution polling timed out after 60 seconds',
+        };
+        return timeoutResult;
+      } catch (cloudErr: unknown) {
+        if (cloudErr instanceof Error && cloudErr.message.includes('status')) {
+          set({ isRunning: false });
+          throw cloudErr;
+        }
+        state.addLog({
+          level: 'warn',
+          message: `[Server API] Backend execution service unreachable (${cloudErr instanceof Error ? cloudErr.message : 'offline'}). Falling back to in-browser execution.`,
+        });
+      }
     }
 
+    // 5. Local/Offline Workflow: In-browser execution engine
     activeEngine = new WorkflowEngine();
 
     let result: WorkflowRunResult;
@@ -854,19 +1004,6 @@ export const useWorkflowStore = create<FullWorkflowStore>((set, get) => ({
               },
             }));
           },
-          onTimelineEvent: (event) => {
-            if (isCloud) {
-              executionService
-                .persistExecutionEvent({
-                  executionId,
-                  nodeId: event.nodeId,
-                  eventType: event.type,
-                  message: event.message,
-                  metadata: event.details,
-                })
-                .catch(() => {});
-            }
-          },
           onLog: (logItem) => {
             get().addLog(logItem);
           },
@@ -874,39 +1011,11 @@ export const useWorkflowStore = create<FullWorkflowStore>((set, get) => ({
       );
     } catch (runErr) {
       activeEngine = null;
-      if (isCloud) {
-        await executionService
-          .finishExecution({
-            executionId,
-            status: 'failed',
-            errorMessage: runErr instanceof Error ? runErr.message : 'Execution error',
-            completedAt: Date.now(),
-          })
-          .catch(() => {});
-      }
       set({ isRunning: false });
       throw runErr;
     }
 
     activeEngine = null;
-
-    // 5. Finalize execution and persist node records in database
-    if (isCloud) {
-      await executionService
-        .finishExecution({
-          executionId,
-          status: result.success ? 'success' : 'failed',
-          outputPayload: result.finalOutputs,
-          errorMessage: result.error || null,
-          startedAt: result.startedAt,
-          completedAt: result.completedAt,
-        })
-        .catch((err) => console.warn('Finish execution error:', err));
-
-      await executionService
-        .persistNodeExecutions(executionId, result.nodeRecords)
-        .catch((err) => console.warn('Node executions error:', err));
-    }
 
     set((s) => ({
       isRunning: false,
@@ -922,20 +1031,19 @@ export const useWorkflowStore = create<FullWorkflowStore>((set, get) => ({
       activeEngine.abort();
       activeEngine = null;
     }
-    if (
-      state.executionId &&
-      isUUID(state.executionId) &&
-      state.isCloudWorkflow &&
-      isUUID(state.workflowId)
-    ) {
-      executionService
-        .finishExecution({
-          executionId: state.executionId,
-          status: 'cancelled',
-          errorMessage: 'Workflow execution cancelled by user.',
-          completedAt: Date.now(),
-        })
-        .catch(() => {});
+    const isCloud = state.isCloudWorkflow && isUUID(state.workflowId);
+    if (isCloud && state.executionId && state.workspaceId) {
+      const session = useAuthStore.getState().session;
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      if (session?.access_token) {
+        fetch(
+          `${apiUrl}/api/workspaces/${state.workspaceId}/executions/${state.executionId}/cancel`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${session.access_token}` },
+          }
+        ).catch(() => {});
+      }
     }
     set({ isRunning: false });
     get().addLog({ level: 'warn', message: 'Workflow execution cancelled by user.' });

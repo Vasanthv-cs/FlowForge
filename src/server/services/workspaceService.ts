@@ -54,6 +54,21 @@ export interface ExecutionDetail extends ExecutionListItem {
   }>;
 }
 
+interface DbExecutionRow {
+  id: string;
+  workflow_id: string;
+  workspace_id?: string;
+  status: string;
+  trigger_type?: string;
+  started_at: string | null;
+  finished_at: string | null;
+  error_message: string | null;
+  created_at?: string;
+  input_payload?: unknown;
+  output_payload?: unknown;
+  workflows?: { workspace_id?: string } | null;
+}
+
 export class WorkspaceService {
   /**
    * List workflows strictly scoped to the specified workspaceId.
@@ -127,8 +142,8 @@ export class WorkspaceService {
 
     let query = supabase
       .from('executions')
-      .select('id, workflow_id, workspace_id, status, trigger_type, duration_ms, started_at, finished_at, error_message, created_at')
-      .eq('workspace_id', workspaceId)
+      .select('id, workflow_id, status, trigger_type, started_at, finished_at, error_message, created_at, workflows!inner(workspace_id)')
+      .eq('workflows.workspace_id', workspaceId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -141,18 +156,25 @@ export class WorkspaceService {
       throw new Error(`Failed to list executions: ${error.message}`);
     }
 
-    return (data || []).map((row) => ({
-      id: row.id,
-      workflowId: row.workflow_id,
-      workspaceId: row.workspace_id,
-      status: row.status,
-      triggerType: row.trigger_type || 'manual',
-      durationMs: row.duration_ms,
-      startedAt: row.started_at,
-      finishedAt: row.finished_at,
-      errorMessage: row.error_message,
-      createdAt: row.created_at,
-    }));
+    return ((data || []) as unknown as DbExecutionRow[]).map((row) => {
+      const durationMs =
+        row.started_at && row.finished_at
+          ? Math.max(0, new Date(row.finished_at).getTime() - new Date(row.started_at).getTime())
+          : null;
+
+      return {
+        id: row.id,
+        workflowId: row.workflow_id,
+        workspaceId: row.workflows?.workspace_id || row.workspace_id || workspaceId,
+        status: row.status,
+        triggerType: row.trigger_type || 'manual',
+        durationMs,
+        startedAt: row.started_at,
+        finishedAt: row.finished_at,
+        errorMessage: row.error_message,
+        createdAt: row.created_at || '',
+      };
+    });
   }
 
   /**
@@ -162,20 +184,26 @@ export class WorkspaceService {
     const supabase = getSupabaseAdminClient();
 
     // 1. Fetch execution row and verify workspace isolation
-    const { data: exec, error: execError } = await supabase
+    const { data: execData, error: execError } = await supabase
       .from('executions')
-      .select('id, workflow_id, workspace_id, status, trigger_type, duration_ms, started_at, finished_at, error_message, input_payload, output_payload, created_at')
+      .select('id, workflow_id, status, trigger_type, started_at, finished_at, error_message, input_payload, output_payload, created_at, workflows!inner(workspace_id)')
       .eq('id', executionId)
-      .eq('workspace_id', workspaceId)
+      .eq('workflows.workspace_id', workspaceId)
       .maybeSingle();
 
     if (execError) {
       throw new Error(`Failed to fetch execution: ${execError.message}`);
     }
 
-    if (!exec) {
+    if (!execData) {
       return null;
     }
+
+    const exec = execData as unknown as DbExecutionRow;
+    const durationMs =
+      exec.started_at && exec.finished_at
+        ? Math.max(0, new Date(exec.finished_at).getTime() - new Date(exec.started_at).getTime())
+        : null;
 
     // 2. Fetch associated node execution logs
     const { data: nodeData, error: nodeError } = await supabase
@@ -202,16 +230,16 @@ export class WorkspaceService {
     return {
       id: exec.id,
       workflowId: exec.workflow_id,
-      workspaceId: exec.workspace_id,
+      workspaceId: exec.workflows?.workspace_id || exec.workspace_id || workspaceId,
       status: exec.status,
       triggerType: exec.trigger_type || 'manual',
-      durationMs: exec.duration_ms,
+      durationMs,
       startedAt: exec.started_at,
       finishedAt: exec.finished_at,
       errorMessage: exec.error_message,
       inputPayload: redactSensitiveData(exec.input_payload),
       outputPayload: redactSensitiveData(exec.output_payload),
-      createdAt: exec.created_at,
+      createdAt: exec.created_at || new Date().toISOString(),
       nodeExecutions: (nodeData || []).map((n) => ({
         id: n.id,
         nodeId: n.node_id,
@@ -233,6 +261,52 @@ export class WorkspaceService {
         details: redactSensitiveData(e.details),
         createdAt: e.created_at,
       })),
+    };
+  }
+
+  /**
+   * Lightweight execution status check for live polling.
+   */
+  async getExecutionStatus(
+    workspaceId: string,
+    executionId: string
+  ): Promise<{
+    id: string;
+    workflowId: string;
+    workspaceId: string;
+    status: string;
+    triggerType: string;
+    durationMs: number | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+    errorMessage: string | null;
+  } | null> {
+    const supabase = getSupabaseAdminClient();
+    const { data, error } = await supabase
+      .from('executions')
+      .select('id, workflow_id, status, trigger_type, started_at, finished_at, error_message, workflows!inner(workspace_id)')
+      .eq('id', executionId)
+      .eq('workflows.workspace_id', workspaceId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+
+    const row = data as unknown as DbExecutionRow;
+    const durationMs =
+      row.started_at && row.finished_at
+        ? Math.max(0, new Date(row.finished_at).getTime() - new Date(row.started_at).getTime())
+        : null;
+
+    return {
+      id: row.id,
+      workflowId: row.workflow_id,
+      workspaceId: row.workflows?.workspace_id || workspaceId,
+      status: row.status,
+      triggerType: row.trigger_type || 'manual',
+      durationMs,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      errorMessage: row.error_message,
     };
   }
 

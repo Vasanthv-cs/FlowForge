@@ -107,6 +107,61 @@ Every workspace-scoped route enforces role permissions:
   - **Body:** `{ "name": "ETL Pipeline", "description": "...", "definition": { ... } }`
   - **Response:** `201 Created` `{ workflow: ... }`
 
+### Server-Side Workflow Execution (Batch 6B)
+- **`POST /api/workspaces/:workspaceId/workflows/:workflowId/execute?wait=false`**
+  - **Auth:** Bearer Token (`owner`, `admin`, `developer` only; `viewer` rejected with `403 Forbidden`).
+  - **Parameters:**
+    - `workspaceId`: Workspace UUID
+    - `workflowId`: Workflow UUID
+    - `wait`: Optional query boolean. When `true`, waits for completion and returns `200 OK` with full run results. When `false` (default), triggers execution in background and immediately returns `202 Accepted`.
+  - **Body (optional):**
+    ```json
+    {
+      "versionId": "optional-workflow-version-uuid",
+      "triggerPayload": { "key": "value" }
+    }
+    ```
+  - **Response (202 Accepted):**
+    ```json
+    {
+      "executionId": "uuid",
+      "status": "running",
+      "startedAt": "2026-11-23T06:00:00.000Z",
+      "workflowId": "uuid",
+      "workspaceId": "uuid"
+    }
+    ```
+  - **Security & Authorization Controls:**
+    - Loads workflow definition authoritatively from the database; never trusts client-supplied graphs.
+    - Validates DAG structure with cycle detection before starting.
+    - Saves an immutable, redacted definition snapshot to `public.executions`.
+    - Enforces workspace concurrency limits: maximum 5 active runs per workspace (returns `429 Too Many Requests` when exceeded).
+    - Enforces 60-second execution timeout and bounded node concurrency (max 4 parallel nodes).
+
+- **`GET /api/workspaces/:workspaceId/executions/:executionId/status`**
+  - **Auth:** Bearer Token (Any Workspace Member)
+  - **Response:** `200 OK`
+    ```json
+    {
+      "status": {
+        "id": "uuid",
+        "workflowId": "uuid",
+        "workspaceId": "uuid",
+        "status": "running | success | failed | cancelled",
+        "triggerType": "manual",
+        "durationMs": 1420,
+        "startedAt": "2026-11-23T06:00:00.000Z",
+        "finishedAt": null,
+        "errorMessage": null
+      }
+    }
+    ```
+
+- **`POST /api/workspaces/:workspaceId/executions/:executionId/cancel`**
+  - **Auth:** Bearer Token (`owner`, `admin`, `developer` only; `viewer` rejected with `403 Forbidden`).
+  - **Response:** `200 OK` `{ "success": true, "message": "Workflow execution cancelled successfully." }`
+  - Aborts in-flight execution via `AbortController`, halts node tasks, and marks execution status as `cancelled`.
+
 ### Execution History
 - **`GET /api/workspaces/:workspaceId/executions?status=success&limit=50&offset=0`**
   - **Auth:** Bearer Token (Any Workspace Member)
@@ -118,7 +173,39 @@ Every workspace-scoped route enforces role permissions:
 
 ---
 
-## 5. Security Safeguards
+## 5. Multi-Layer SSRF Protection (`safeHttpClient.ts`)
+
+Outbound HTTP requests executed by the HTTP Request node on the server are secured against Server-Side Request Forgery (SSRF) and DNS rebinding attacks via a defense-in-depth architecture:
+
+1. **Protocol and Syntax Enforcement:**
+   - Permitted protocols: strictly `http:` and `https:`.
+   - Embedded credentials (`http://user:pass@host`) are strictly forbidden.
+   - Standard safe web ports permitted: `80`, `443`, `8080`, `8443`. Sensitive internal ports (e.g. SSH 22, SMTP 25, Redis 6379, Postgres 5432) are blocked.
+2. **Comprehensive IP Range Blacklisting:**
+   - IPv4 Loopback (`127.0.0.0/8`), `0.0.0.0/8`.
+   - RFC 1918 Private Networks (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`).
+   - Link-Local and Cloud Metadata (`169.254.0.0/16`, specifically `169.254.169.254`).
+   - Carrier-Grade NAT (`100.64.0.0/10`), Multicast (`224.0.0.0/4`), Broadcast (`255.255.255.255`), Documentation subnets.
+   - IPv6 Loopback (`::1`), Unspecified (`::`), Link-Local (`fe80::/10`), Unique Local Addresses (`fc00::/7`), Multicast (`ff00::/8`).
+   - IPv4-Mapped IPv6 (`::ffff:0:0/96`) and 6to4 prefix (`2002::/16`) embedding private addresses.
+3. **Full DNS Resolution Inspection:**
+   - Resolves all `A` and `AAAA` records for target hostnames.
+   - If *any* resolved address falls into a forbidden range, the request is immediately rejected.
+4. **Anti-DNS Rebinding Mitigation:**
+   - Implements custom socket `lookup` pinning that supplies Node's socket connection directly with the pre-resolved, validated public IP.
+   - Retains original domain name in TLS SNI (`servername`) and HTTP `Host` header for virtual hosting and TLS certificate verification.
+5. **Redirect Destination Validation:**
+   - Redirects (`301`, `302`, `303`, `307`, `308`) are followed up to a maximum of 3 hops.
+   - Each redirect destination URL and its resolved IPs are re-validated before issuing subsequent requests.
+6. **Stream-Level Response Size Enforcement:**
+   - Monitored at the chunk stream level with a 2MB default maximum size.
+   - If response data exceeds the threshold, the underlying socket is immediately destroyed to prevent memory buffer exhaustion.
+7. **Timeout Controls:**
+   - Total socket and connection timeout protection (default 10s per HTTP node, max 60s per workflow).
+
+---
+
+## 6. Security Safeguards
 
 1. **Sensitive Log Redaction:**
    Pino logger is configured to redact all sensitive paths including:
@@ -132,7 +219,7 @@ Every workspace-scoped route enforces role permissions:
 
 ---
 
-## 6. Running and Testing
+## 7. Running and Testing
 
 ### Development
 Start the backend server in watch mode:
@@ -146,9 +233,16 @@ npm run server
 ```
 
 ### Testing
-Run backend unit and integration test suite:
+Run backend unit and integration test suites:
 ```bash
+# Foundation and Auth tests
 npx vitest run src/__tests__/backendApiAndAuth.test.ts
+
+# Server-Side Execution and RBAC tests
+npx vitest run src/__tests__/serverWorkflowExecution.test.ts
+
+# SSRF Protection unit tests
+npx vitest run src/__tests__/ssrfProtection.test.ts
 ```
 
 Run all unit, integration, and E2E test suites:

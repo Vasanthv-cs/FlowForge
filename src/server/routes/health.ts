@@ -24,10 +24,16 @@ export const healthRoutes: FastifyPluginAsync = async (app: FastifyInstance): Pr
     const dbStatus = await workspaceService.checkDatabaseReadiness();
 
     if (!dbStatus.isReady) {
+      // Never reveal internal database errors, connection strings, or hostnames in production
+      const errorDetail =
+        process.env.NODE_ENV === 'production'
+          ? 'Database connection probe failed'
+          : dbStatus.error;
+
       return reply.status(503).send({
         status: 'unready',
         database: 'disconnected',
-        error: dbStatus.error,
+        error: errorDetail,
         latencyMs: dbStatus.latencyMs,
         timestamp: new Date().toISOString(),
       });

@@ -1,16 +1,27 @@
 import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
+import { executionEngineService } from './services/executionEngineService.ts';
 
 async function main() {
   const config = loadConfig();
   const app = await buildApp();
+
+  // Reconcile any stale executions from previous server crash or restart
+  try {
+    const { reconciledCount } = await executionEngineService.reconcileStaleExecutions();
+    if (reconciledCount > 0) {
+      console.log(`[FlowForge] Reconciled ${reconciledCount} interrupted execution(s) from previous session.`);
+    }
+  } catch (err) {
+    console.warn('[FlowForge] Could not reconcile stale executions on startup:', err);
+  }
 
   try {
     const address = await app.listen({
       port: config.PORT,
       host: config.HOST,
     });
-    console.log(`🚀 FlowForge Backend API running on ${address}`);
+    console.log(`🚀 FlowForge Backend API running on ${address} (env: ${config.NODE_ENV})`);
   } catch (err) {
     console.error('Failed to start FlowForge Backend API server:', err);
     process.exit(1);
@@ -20,6 +31,7 @@ async function main() {
   for (const signal of signals) {
     process.on(signal, async () => {
       console.log(`\nStopping FlowForge API server (${signal})...`);
+      executionEngineService.abortAllActive(`Server stopping (${signal})`);
       await app.close();
       process.exit(0);
     });
