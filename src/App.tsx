@@ -7,10 +7,22 @@ import { BottomPanel } from '@/components/layout/BottomPanel';
 import { FlowCanvas } from '@/components/canvas/FlowCanvas';
 import { useWorkflowStore } from '@/store/workflowStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useEffect } from 'react';
+import { useAuthStore } from '@/store/authStore';
 
 function WorkflowStudio() {
   // Activate global keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Initialize auth once on mount: restores existing sessions AND handles
+  // OAuth redirect callbacks (access_token hash fragments from Google sign-in).
+  const initialize = useAuthStore((s) => s.initialize);
+  const isInitialized = useAuthStore((s) => s.isInitialized);
+  useEffect(() => {
+    if (!isInitialized) {
+      void initialize();
+    }
+  }, [initialize, isInitialized]);
 
   const leftSidebarOpen = useWorkflowStore((s) => s.leftSidebarOpen);
   const rightSidebarOpen = useWorkflowStore((s) => s.rightSidebarOpen);

@@ -14,6 +14,7 @@ interface AuthState {
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signUp: (email: string, password: string, displayName?: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithGoogle: () => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ success: boolean; error?: string }>;
   updatePassword: (password: string) => Promise<{ success: boolean; error?: string }>;
@@ -113,6 +114,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ isLoading: false, error: null });
     }
 
+    return { success: true };
+  },
+
+  signInWithGoogle: async () => {
+    set({ isLoading: true, error: null });
+    const { error } = await authService.signInWithGoogle();
+    // The OAuth flow navigates the browser to Google, so the loading state
+    // may persist until the redirect. If Supabase returns an error before
+    // the redirect (e.g. provider not configured), surface it immediately.
+    if (error) {
+      set({ isLoading: false, error });
+      return { success: false, error };
+    }
+    // Success: browser is being redirected to Google. Leave isLoading true
+    // so the button shows a spinner while the navigation happens.
     return { success: true };
   },
 
