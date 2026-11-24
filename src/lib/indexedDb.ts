@@ -249,6 +249,24 @@ class IndexedDbStorage {
     }
   }
 
+  public async duplicateTestScenario(workflowId: string, scenarioId: string): Promise<TestScenario | null> {
+    const scenarios = await this.listTestScenarios(workflowId);
+    const target = scenarios.find((s) => s.id === scenarioId);
+    if (!target) return null;
+
+    const duplicated: TestScenario = {
+      ...JSON.parse(JSON.stringify(target)),
+      id: `sc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: `${target.name} (Copy)`,
+      lastRunAt: undefined,
+      lastRunPassed: undefined,
+      lastRunDurationMs: undefined,
+      lastRunResults: undefined,
+    };
+    await this.saveTestScenario(duplicated);
+    return duplicated;
+  }
+
   private listTestScenariosSync(workflowId: string): TestScenario[] {
     try {
       const raw = localStorage.getItem(`ff_scenarios_${workflowId}`);

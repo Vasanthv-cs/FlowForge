@@ -8,7 +8,22 @@ const MAX_RESPONSE_BYTES = 5 * 1024 * 1024; // 5 MB maximum response size
 export class HttpRequestExecutor implements NodeExecutor {
   async execute(context: ExecutionContext): Promise<NodeExecutionResult> {
     const config = context.node.data.config as unknown as HttpRequestConfig;
-    const { method = 'GET', url, headers = {}, body, timeoutMs = 5000 } = config;
+    const {
+      method = 'GET',
+      url,
+      queryParams = {},
+      headers = {},
+      body,
+      timeoutMs = 5000,
+      credentialId,
+    } = config || {};
+
+    if (credentialId) {
+      context.emitLog(
+        'info',
+        '[Browser Engine] Node references vault credential. Secrets will be securely resolved during server execution.'
+      );
+    }
 
     // 1. SSRF and URL Security Validation
     if (!url || !url.trim()) {
@@ -17,7 +32,20 @@ export class HttpRequestExecutor implements NodeExecutor {
       return { success: false, error: err };
     }
 
-    const securityCheck = validateSafeUrl(url);
+    let requestUrl = url.trim();
+    if (queryParams && typeof queryParams === 'object' && Object.keys(queryParams).length > 0) {
+      try {
+        const parsed = new URL(requestUrl);
+        for (const [k, v] of Object.entries(queryParams)) {
+          if (k && v !== undefined) parsed.searchParams.append(k, String(v));
+        }
+        requestUrl = parsed.toString();
+      } catch {
+        // Retain original URL if parsing fails
+      }
+    }
+
+    const securityCheck = validateSafeUrl(requestUrl);
     if (!securityCheck.isSafe) {
       const err = `HTTP Request blocked: ${securityCheck.reason}`;
       context.emitLog('error', err);
@@ -28,7 +56,7 @@ export class HttpRequestExecutor implements NodeExecutor {
     const sanitizedHeaders = sanitizeHeadersForLogging(headers);
     context.emitLog(
       'info',
-      `Dispatching ${method} ${url} (Timeout: ${timeoutMs}ms, Headers: ${JSON.stringify(sanitizedHeaders)})`,
+      `Dispatching ${method} ${requestUrl} (Timeout: ${timeoutMs}ms, Headers: ${JSON.stringify(sanitizedHeaders)})`,
     );
 
     // 3. Request Execution with Timeout
@@ -46,7 +74,7 @@ export class HttpRequestExecutor implements NodeExecutor {
         requestOptions.body = body;
       }
 
-      const response = await fetch(url, requestOptions);
+      const response = await fetch(requestUrl, requestOptions);
       clearTimeout(timeoutTimer);
 
       context.emitLog(

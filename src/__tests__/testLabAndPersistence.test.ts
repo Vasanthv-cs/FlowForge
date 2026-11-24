@@ -131,29 +131,14 @@ describe('Stage 6: IndexedDB Storage & Local Persistence', () => {
   });
 });
 
-describe('Stage 6: Test Assertion Logic Evaluator', () => {
-  const evaluateAssertion = (
-    actual: unknown,
-    assertion: TestAssertion,
-  ): boolean => {
-    switch (assertion.operator) {
-      case 'equals':
-        return String(actual).trim() === String(assertion.expectedValue).trim();
-      case 'not_equals':
-        return String(actual).trim() !== String(assertion.expectedValue).trim();
-      case 'contains':
-        return String(actual).includes(String(assertion.expectedValue));
-      case 'greater_than':
-        return Number(actual) > Number(assertion.expectedValue);
-      case 'less_than':
-        return Number(actual) < Number(assertion.expectedValue);
-      case 'exists':
-        return actual !== undefined && actual !== null;
-      default:
-        return false;
-    }
-  };
+import {
+  evaluateAssertion,
+  resolveProperty,
+  reconcileScenarioAssertions,
+} from '../utils/testAssertionEvaluator';
+import type { WorkflowNode } from '../types/workflow';
 
+describe('Stage 6: Test Assertion Logic Evaluator', () => {
   it('evaluates equals and not_equals accurately', () => {
     const asEquals: TestAssertion = {
       id: '1',
@@ -162,8 +147,8 @@ describe('Stage 6: Test Assertion Logic Evaluator', () => {
       operator: 'equals',
       expectedValue: 'active',
     };
-    expect(evaluateAssertion('active', asEquals)).toBe(true);
-    expect(evaluateAssertion('inactive', asEquals)).toBe(false);
+    expect(evaluateAssertion('active', asEquals).passed).toBe(true);
+    expect(evaluateAssertion('inactive', asEquals).passed).toBe(false);
 
     const asNotEquals: TestAssertion = {
       id: '2',
@@ -172,8 +157,8 @@ describe('Stage 6: Test Assertion Logic Evaluator', () => {
       operator: 'not_equals',
       expectedValue: 'active',
     };
-    expect(evaluateAssertion('pending', asNotEquals)).toBe(true);
-    expect(evaluateAssertion('active', asNotEquals)).toBe(false);
+    expect(evaluateAssertion('pending', asNotEquals).passed).toBe(true);
+    expect(evaluateAssertion('active', asNotEquals).passed).toBe(false);
   });
 
   it('evaluates contains accurately', () => {
@@ -184,8 +169,8 @@ describe('Stage 6: Test Assertion Logic Evaluator', () => {
       operator: 'contains',
       expectedValue: 'success',
     };
-    expect(evaluateAssertion('The request was a success!', asContains)).toBe(true);
-    expect(evaluateAssertion('Failure detected', asContains)).toBe(false);
+    expect(evaluateAssertion('The request was a success!', asContains).passed).toBe(true);
+    expect(evaluateAssertion('Failure detected', asContains).passed).toBe(false);
   });
 
   it('evaluates numeric comparisons (greater_than and less_than)', () => {
@@ -196,8 +181,8 @@ describe('Stage 6: Test Assertion Logic Evaluator', () => {
       operator: 'greater_than',
       expectedValue: '100',
     };
-    expect(evaluateAssertion(150, asGt)).toBe(true);
-    expect(evaluateAssertion(50, asGt)).toBe(false);
+    expect(evaluateAssertion(150, asGt).passed).toBe(true);
+    expect(evaluateAssertion(50, asGt).passed).toBe(false);
 
     const asLt: TestAssertion = {
       id: '5',
@@ -206,8 +191,8 @@ describe('Stage 6: Test Assertion Logic Evaluator', () => {
       operator: 'less_than',
       expectedValue: '100',
     };
-    expect(evaluateAssertion(25, asLt)).toBe(true);
-    expect(evaluateAssertion(150, asLt)).toBe(false);
+    expect(evaluateAssertion(25, asLt).passed).toBe(true);
+    expect(evaluateAssertion(150, asLt).passed).toBe(false);
   });
 
   it('evaluates exists operator', () => {
@@ -218,9 +203,157 @@ describe('Stage 6: Test Assertion Logic Evaluator', () => {
       operator: 'exists',
       expectedValue: '',
     };
-    expect(evaluateAssertion('abc-123', asExists)).toBe(true);
-    expect(evaluateAssertion(0, asExists)).toBe(true);
-    expect(evaluateAssertion(null, asExists)).toBe(false);
-    expect(evaluateAssertion(undefined, asExists)).toBe(false);
+    expect(evaluateAssertion('abc-123', asExists).passed).toBe(true);
+    expect(evaluateAssertion(0, asExists).passed).toBe(true);
+    expect(evaluateAssertion(null, asExists).passed).toBe(false);
+    expect(evaluateAssertion(undefined, asExists).passed).toBe(false);
+  });
+
+  /* ── Regression Suite for Test Lab Assertion Fix ── */
+  it('correctly evaluates _condition.branch === false for string and boolean values', () => {
+    const asConditionFalse: TestAssertion = {
+      id: 'as-false',
+      targetNodeId: 'node-cond',
+      targetProperty: '_condition.branch',
+      operator: 'equals',
+      expectedValue: 'false',
+    };
+
+    // Evaluated against string 'false' from condition node output
+    const resStringFalse = evaluateAssertion('false', asConditionFalse);
+    expect(resStringFalse.passed).toBe(true);
+    expect(resStringFalse.actualValue).toBe('false');
+
+    // Evaluated against boolean false (e.g., from _condition.passed)
+    const resBoolFalse = evaluateAssertion(false, asConditionFalse);
+    expect(resBoolFalse.passed).toBe(true);
+    expect(resBoolFalse.actualValue).toBe(false);
+
+    // Correctly fails when actual is 'true' or true
+    const resFailTrue = evaluateAssertion('true', asConditionFalse);
+    expect(resFailTrue.passed).toBe(false);
+    expect(resFailTrue.message).toContain('Assertion Failed: Expected false, but got true');
+  });
+
+  it('correctly evaluates _condition.branch === true for string and boolean values', () => {
+    const asConditionTrue: TestAssertion = {
+      id: 'as-true',
+      targetNodeId: 'node-cond',
+      targetProperty: '_condition.branch',
+      operator: 'equals',
+      expectedValue: 'true',
+    };
+
+    // Passes when actual is 'true'
+    expect(evaluateAssertion('true', asConditionTrue).passed).toBe(true);
+    // Passes when actual is boolean true
+    expect(evaluateAssertion(true, asConditionTrue).passed).toBe(true);
+
+    // Fails when actual is 'false' or false
+    const resFail = evaluateAssertion('false', asConditionTrue);
+    expect(resFail.passed).toBe(false);
+    expect(resFail.message).toContain('Assertion Failed: Expected true, but got false');
+  });
+
+  it('handles missing property on node output by returning passed: false and clear message', () => {
+    const asMissing: TestAssertion = {
+      id: 'as-miss',
+      targetNodeId: 'node-cond',
+      targetProperty: 'nonExistentProperty.deep',
+      operator: 'equals',
+      expectedValue: 'something',
+    };
+
+    const res = evaluateAssertion(undefined, asMissing);
+    expect(res.passed).toBe(false);
+    expect(res.actualValue).toBeUndefined();
+    expect(res.message).toContain('Property "nonExistentProperty.deep" was not found on node output');
+  });
+
+  it('resolves nested dot-notation properties safely using resolveProperty', () => {
+    const outputData = {
+      user: { id: 101, details: { role: 'admin' } },
+      _condition: { branch: 'false', passed: false },
+    };
+
+    expect(resolveProperty(outputData, 'user.details.role')).toBe('admin');
+    expect(resolveProperty(outputData, '_condition.branch')).toBe('false');
+    expect(resolveProperty(outputData, '_condition.passed')).toBe(false);
+    expect(resolveProperty(outputData, 'unknown.path')).toBeUndefined();
+    expect(resolveProperty(null, '_condition.branch')).toBeUndefined();
+  });
+
+  it('reconciles scenario assertions with valid workflow nodes and preserves selection', async () => {
+    const mockNodes: WorkflowNode[] = [
+      {
+        id: 'node-manual-1',
+        type: 'workflowNode',
+        position: { x: 0, y: 0 },
+        data: {
+          label: 'Manual Trigger',
+          type: 'manual-trigger',
+          category: 'trigger',
+          description: '',
+          icon: 'Play',
+          color: '#10b981',
+          config: {},
+          inputs: [],
+          outputs: [],
+          status: 'idle',
+        },
+      },
+      {
+        id: 'node-condition-2',
+        type: 'workflowNode',
+        position: { x: 200, y: 0 },
+        data: {
+          label: 'Condition Check',
+          type: 'condition',
+          category: 'logic',
+          description: '',
+          icon: 'GitBranch',
+          color: '#f59e0b',
+          config: {},
+          inputs: [],
+          outputs: [],
+          status: 'idle',
+        },
+      },
+    ];
+
+    // Scenario referencing an obsolete or missing node ID ("node-1")
+    const scenarios: TestScenario[] = [
+      {
+        id: 'sc-1',
+        workflowId: 'wf-test',
+        name: 'Obsolete Target Scenario',
+        description: 'Scenario with invalid targetNodeId',
+        triggerPayload: { amount: 50 },
+        assertions: [
+          {
+            id: 'as-1',
+            targetNodeId: 'node-1', // obsolete ID not in mockNodes
+            targetProperty: '_condition.branch',
+            operator: 'equals',
+            expectedValue: 'false',
+          },
+        ],
+      },
+    ];
+
+    const { reconciled, hasChanges } = reconcileScenarioAssertions(scenarios, mockNodes);
+    expect(hasChanges).toBe(true);
+    // Condition assertion must automatically reconcile to the existing condition node ID
+    expect(reconciled[0].assertions[0].targetNodeId).toBe('node-condition-2');
+
+    // Persist and restore through idbStorage to verify targetNodeId remains intact
+    await idbStorage.saveTestScenario(reconciled[0]);
+    const retrieved = await idbStorage.listTestScenarios('wf-test');
+    expect(retrieved).toHaveLength(1);
+    expect(retrieved[0].assertions[0].targetNodeId).toBe('node-condition-2');
+    expect(retrieved[0].assertions[0].expectedValue).toBe('false');
+
+    // Clean up test DB
+    await idbStorage.deleteTestScenario('wf-test', 'sc-1');
   });
 });

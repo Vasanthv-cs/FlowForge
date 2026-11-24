@@ -1,110 +1,154 @@
-# FlowForge — Visual Workflow Programming Studio
+# FlowForge — Visual Workflow Programming Studio & Distributed Automation Platform
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-Strict_Mode-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![React](https://img.shields.io/badge/React-19.3-61DAFB?logo=react&logoColor=black)](https://react.dev/)
+[![Fastify](https://img.shields.io/badge/Fastify-5.12-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
+[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?logo=supabase&logoColor=white)](https://supabase.com/)
 [![Vite](https://img.shields.io/badge/Vite-8.3-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![React Flow](https://img.shields.io/badge/@xyflow/react-v13-FF0072)](https://reactflow.dev/)
-[![Tests](https://img.shields.io/badge/Vitest-65_Passed-22C55E?logo=vitest&logoColor=white)](https://vitest.dev/)
-[![E2E](https://img.shields.io/badge/Playwright-6_Passed-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/)
+[![Tests](https://img.shields.io/badge/Vitest-353_Passed-22C55E?logo=vitest&logoColor=white)](https://vitest.dev/)
+[![Playwright](https://img.shields.io/badge/Playwright-E2E_Verified-2EAD33?logo=playwright&logoColor=white)](https://playwright.dev/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-FlowForge is a web-native **Visual Workflow Programming Studio**. It allows software engineers and technical teams to design, connect, configure, execute, debug, and test complex automation graphs through an interactive node-based interface.
+FlowForge is a web-native, full-stack **Visual Workflow Programming Studio and Distributed Automation Platform**. It enables software engineers and technical teams to design, connect, test, execute, and monitor complex automation graphs through a responsive node-based canvas backed by an enterprise-grade execution engine.
 
-Built from first principles with **React 19**, **strict TypeScript**, **@xyflow/react**, and a decoupled **Directed Acyclic Graph (DAG) Execution Engine**.
+Built from first principles with **React 19**, **strict TypeScript**, **@xyflow/react**, **Fastify**, and **Supabase PostgreSQL**, FlowForge combines the intuitive developer experience of modern visual tooling with the fault tolerance, security, and observability expected of mission-critical backend systems.
 
 ---
 
 ## 🌟 Key Features
 
-### 1. Visual Canvas & Node System
-- **6 Core Nodes**:
-  - **Manual Trigger**: Workflow ignition point accepting custom JSON test payloads.
-  - **HTTP Request**: Secure REST requester supporting `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, custom headers, timeout management, and strict SSRF blocking.
-  - **Transform Data**: Pure declarative JSON path extraction, field picking, key renaming, parsing, and serialization without unsafe `eval()` or `Function()`.
-  - **Condition**: Logic branching (`==`, `!=`, `>`, `<`, `contains`, `is_empty`, `is_not_empty`) with distinct `true` and `false` output routing.
-  - **Delay**: Configurable sleep timers with safe execution guards.
-  - **Console Output**: Multi-level runtime inspector (`info`, `warn`, `error`, `success`, `log`) for downstream telemetry.
-- **Connection Rules**: Strict port validation preventing self-connections, duplicate edges, loops, and invalid trigger inputs.
-- **Gestures & Canvas Controls**: Drag-and-drop palette, multi-selection, smooth pan/zoom, interactive minimap, and snap-to-grid dots.
+### 1. Visual Studio & Node Graph Editor
+- **Interactive Canvas**: Drag-and-drop node palette, multi-selection, smooth pan/zoom, interactive minimap, undo/redo (`Ctrl+Z` / `Ctrl+Y`), copy/paste (`Ctrl+C` / `Ctrl+V`), and snap-to-grid controls.
+- **Port Validation & Connection Rules**: Prevents invalid self-connections, duplicate edges, loop creation, and disallowed port-to-port mappings at drag time.
+- **Node Inspector & Config Panels**: Type-safe dynamic configuration forms with real-time Zod schema validation, environment variable interpolation, and JSON code editors.
 
-### 2. High-Performance DAG Execution Engine
-- **Decoupled Architecture**: 100% pure TypeScript engine with zero coupling to React lifecycle or DOM components.
-- **Topological Sorting**: Kahn's algorithm resolves deterministic execution ordering and immediately flags circular loops with cycle trace paths.
-- **Dependency-Aware Concurrency**: Independent branches execute concurrently using bounded asynchronous concurrency pools (default 4 workers).
-- **Branch-Aware Routing**: Condition nodes selectively propagate down active handles while gracefully flagging downstream unchosen branches as `skipped`.
-- **SSRF & Network Security**: Blocks RFC 1918 private subnets, localhost loopbacks (`127.0.0.1`, `::1`), link-local metadata addresses (`169.254.169.254`), and automatically masks `Authorization`, `Cookie`, and `Api-Key` headers in logs.
+### 2. Decoupled DAG Execution Engine
+- **Kahn’s Topological Sorting**: Computes deterministic execution order and instantly detects circular dependency cycles with detailed cycle traces (e.g., `NodeA -> NodeB -> NodeA`).
+- **Asynchronous Concurrency**: Concurrently executes independent branches using bounded worker concurrency pools.
+- **Branch-Aware Routing**: Condition nodes selectively activate `true` or `false` downstream branches while gracefully propagating `skipped` statuses to inactive nodes.
 
-### 3. Integrated Execution Debugger
-- **Visual Status Badges**:
-  - `Grey`: Pending / Ready
-  - `Blue`: Running (active spinner with pulse animation)
-  - `Green`: Successful completion
-  - `Red`: Node execution error
-  - `Yellow`: Skipped branch
-- **Node Inspector**: Inspects captured input payload received from upstream, output payload emitted downstream, exact node execution duration in milliseconds, branch evaluation results, and error stack details.
-- **Execution Timeline**: Chronological event waterfall charting workflow start, individual node latencies, and final graph resolution.
-- **Interactive Log Panel**: Real-time log sink supporting level filters (`info`, `warn`, `error`, `success`), text search, clear logs, and clickable node links.
-- **Past Run Selector**: Compare timeline and log traces across multiple workflow executions.
+### 3. Durable Execution Queue & Background Workers
+- **Database-Backed Queue**: Uses PostgreSQL `FOR UPDATE SKIP LOCKED` for atomic, race-free job claims across distributed worker instances.
+- **Crash Recovery & Heartbeats**: Background sweepers automatically detect crashed worker processes (heartbeat $>30\text{s}$ stale) and recover interrupted jobs.
+- **Configurable Retry Policies**: Declarative linear and exponential backoff with full jitter to avoid thundering-herd spikes against third-party APIs.
+- **Reliable Cancellation**: Immediately halts in-flight executions, releases worker capacity, and records cancellation events.
 
-### 4. Persistence, Versioning & Testing Laboratory
-- **IndexedDB Native Storage**: Local storage with fallback using dedicated object stores for workflows, version snapshots, and test suites.
-- **JSON Import & Export**: Export workflows as formatted `.json`; validate imports using strict Zod schemas (`workflowImportSchema`) with graceful error recovery.
-- **Version History & Rollbacks**: Create named snapshot tags (e.g. `v1.0`, `v1.1`), view change logs, and restore any previous version onto the canvas with a single click.
-- **Workflow Testing Laboratory**: Define test scenarios with custom trigger payloads and multi-target assertion rules (`equals`, `contains`, `greater_than`, `less_than`, `exists`). Compares actual output against expected criteria and highlights pass/fail diffs.
+### 4. Enterprise Credential Vault
+- **AES-256-GCM Encryption**: Secrets and tokens are encrypted at rest with authenticated 96-bit IVs and 128-bit authentication tags.
+- **Zero-Exposure Policy**: Secrets are never returned to the browser or stored in plaintext in the database.
+- **Runtime Injection & Scrubbing**: Vault secrets (`{{vault.SECRET_NAME}}`) are resolved in worker memory immediately prior to execution and automatically redacted from logs, timelines, and error messages.
+
+### 5. Multi-Trigger Ingestion
+- **Manual Triggers**: Interactive execution with customizable JSON test payloads.
+- **Public Webhook Ingestion**: Dedicated public ingestion endpoints (`/api/webhooks/:path`) with HTTP method routing, Bearer token verification, and HMAC-SHA256 signature validation.
+- **Scheduled Cron Automations**: In-database cron scheduler supporting standard 5-part cron syntax, timezones, pause/resume, and missed-run catchup logic.
+
+### 6. Time-Travel Debugging & Partial Replay
+- **Immutable State Snapshots**: Every workflow execution persists complete, immutable input and output snapshots for every single node.
+- **Partial Replay from Node**: Select any historical execution, inspect its intermediate data, and replay the workflow from any chosen node forward without re-running earlier steps.
+
+### 7. Workflow Testing Laboratory
+- **Automated Scenario Testing**: Define multiple named test scenarios with structured input payloads and multi-target assertion rules.
+- **8 Assertion Operators**: `equals`, `not_equals`, `contains`, `does_not_contain`, `greater_than`, `less_than`, `exists`, `does_not_exist`.
+- **Suite Runs & Diff Inspection**: Run entire test suites with instant pass/fail reporting, execution latencies, and output diffs.
+
+### 8. Production Observability & Health Probes
+- **Liveness & Readiness Probes**: Separate `/health` (process memory, uptime) and `/ready` (DB latency, worker capacity, queue depth) endpoints with production credential masking.
+- **Execution Metrics & Percentiles**: Workspace-scoped analytics computing success/failure rates, queue wait times, duration percentiles (`p50`, `p90`, `p95`), and node-level failure breakdowns.
+- **Real-Time Monitoring UI**: Live dashboard with customizable time windows (`1h`, `24h`, `7d`, `30d`), auto-refresh toggles, SVG volume/failure charts, and long-running execution alerts (>30s).
+- **Structured JSON Logging**: Pino-powered logging with request correlation IDs and automated secret redaction.
+
+### 9. Developer CLI (`@flowforge/cli`)
+- Standalone command-line tool (`flowforge`) for authenticating, listing, pulling, pushing, validating, and exporting workflows directly from terminal environments and CI/CD pipelines.
 
 ---
 
-## 🏛 Architecture Diagram
+## 🏛 System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph UI_Layer ["FlowForge Studio UI (React 19 + Tailwind v4)"]
-        TopNav["Top Navigation Bar (Run, Validate, Versions, Test Lab, Export)"]
-        LeftPalette["Node Library Palette (Draggable Node Templates)"]
-        Canvas["React Flow Canvas (@xyflow/react)"]
-        RightInspector["Node Inspector & Debugger (Config Forms + Payload Viewers)"]
-        BottomConsole["Bottom Panel (Logs, Timeline, Past Runs, Errors)"]
+    subgraph Client_Tier ["Client & Developer Interfaces"]
+        UI["FlowForge Studio (React 19 + @xyflow/react)"]
+        CLI["Developer CLI (@flowforge/cli)"]
+        ExternalWebhooks["External Webhook Callers (GitHub, Stripe, etc.)"]
     end
 
-    subgraph State_Layer ["Zustand Architecture (Clean State Segregation)"]
-        DocState["Document State (Nodes, Edges, Workflow Name, Undo/Redo)"]
-        UIState["UI State (Sidebar Open, Active Tabs, Selections)"]
-        ExecState["Execution State (Engine Status, Active Run, Node Records)"]
+    subgraph API_Gateway ["Fastify Backend Gateway (Port 3001)"]
+        Security["CORS, Rate Limiting & Security Headers"]
+        AuthGate["Supabase JWT Auth & Workspace RBAC"]
+        Health["Liveness (/health) & Readiness (/ready) Probes"]
+        APIRoutes["Routes: Workflows | Executions | Credentials | Schedules | Templates | Metrics"]
+        WebhookHandler["Public Webhook Ingestion (/api/webhooks/*)"]
     end
 
-    subgraph Persistence_Layer ["Storage Engine (IndexedDB + LocalStorage)"]
-        IDB_Workflows[("Workflows Store")]
-        IDB_Versions[("Version Snapshots Store")]
-        IDB_Scenarios[("Test Scenarios Store")]
+    subgraph Data_Tier ["Supabase PostgreSQL (Multi-Tenant & RLS)"]
+        Workspaces[("Workspaces & RBAC Roles")]
+        WorkflowsTable[("Workflows & Version Snapshots")]
+        ExecutionQueue[("Workflow Executions (Queue: FOR UPDATE SKIP LOCKED)")]
+        NodeLogs[("Node Executions & Debugging Logs")]
+        VaultTable[("Credential Vault (AES-256-GCM)")]
+        SchedulesTable[("Workflow Schedules & Cron State")]
     end
 
-    subgraph Core_Engine ["Pure TypeScript Execution Engine (Decoupled)"]
-        GraphValidator["Graph Analyzer (Kahn's Topological Sort & Cycle Detector)"]
-        ConcurrencyPool["Concurrency Scheduler (Max 4 Concurrent Workers)"]
-        NodeRegistry["Typed Node Registry (BaseExecutor Dispatch)"]
-        Executors["Executors: Trigger | HTTP | Transform | Condition | Delay | Console"]
-        SecurityShield["URL Security & SSRF Shield (RFC1918 & Localhost Filter)"]
+    subgraph Worker_Tier ["Distributed Execution Engine"]
+        WorkerPool["Durable Worker Fleet (Atomic Claims)"]
+        Scheduler["Cron Scheduler Service (Timezone-Aware)"]
+        Sweeper["Heartbeat Sweeper & Crash Recovery"]
+        CoreEngine["DAG WorkflowEngine (Topological Kahn Sort)"]
+        SSRFShield["SSRF & DNS Security Shield (SafeHttpClient)"]
     end
 
-    TopNav --> DocState
-    LeftPalette --> DocState
-    Canvas --> DocState
-    DocState --> IDB_Workflows
-    DocState --> IDB_Versions
+    UI --> Security
+    CLI --> Security
+    ExternalWebhooks --> WebhookHandler
 
-    Canvas --> RightInspector
-    TopNav --> BottomConsole
+    Security --> AuthGate
+    AuthGate --> APIRoutes
+    WebhookHandler --> ExecutionQueue
 
-    DocState -->|Run Graph Snapshot| GraphValidator
-    GraphValidator --> ConcurrencyPool
-    ConcurrencyPool --> NodeRegistry
-    NodeRegistry --> Executors
-    Executors --> SecurityShield
-    Executors -->|Emits State & Logs| ExecState
-    ExecState --> BottomConsole
-    ExecState --> RightInspector
+    APIRoutes --> Workspaces
+    APIRoutes --> WorkflowsTable
+    APIRoutes --> ExecutionQueue
+    APIRoutes --> NodeLogs
+    APIRoutes --> VaultTable
+    APIRoutes --> SchedulesTable
+
+    WorkerPool -->|FOR UPDATE SKIP LOCKED| ExecutionQueue
+    WorkerPool --> CoreEngine
+    Scheduler -->|Poll Due Schedules| SchedulesTable
+    Scheduler -->|Enqueue Execution| ExecutionQueue
+    Sweeper -->|Recover Crashed Workers| ExecutionQueue
+
+    CoreEngine --> SSRFShield
+    CoreEngine -->|Inject Secrets| VaultTable
+    CoreEngine -->|Stream Node Logs| NodeLogs
 ```
+
+---
+
+## 📦 Built-in Node Catalog (16 Production Nodes)
+
+| Category | Node Name | Type ID | Description |
+| :--- | :--- | :--- | :--- |
+| **Triggers** | **Manual Trigger** | `manualTrigger` | Workflow starting point accepting custom JSON test payloads |
+| | **Webhook Trigger** | `webhookTrigger` | Ingests external HTTP requests with path routing & HMAC validation |
+| | **Schedule Trigger** | `scheduleTrigger` | Automated execution via standard 5-part cron expressions |
+| **Logic** | **Condition** | `condition` | Multi-rule conditional branching with distinct `true` and `false` output routing |
+| **Data Processing** | **Transform Data** | `transformData` | Pure declarative JSON path extraction, field picking, and key renaming |
+| | **String Operations** | `stringOps` | String manipulation (trim, case conversion, replace, regex extraction) |
+| | **Math Operations** | `mathOps` | Mathematical computations (arithmetic, rounding, clamp) |
+| | **Filter Data** | `filterData` | Array filtering based on item conditions |
+| | **Map Data** | `mapData` | Array element transformation and key projection |
+| | **Merge Data** | `mergeData` | Combines two upstream data streams (deep merge, shallow merge, append) |
+| | **JSON Parse** | `jsonParse` | Parses raw JSON strings into structured objects with fallback |
+| | **JSON Stringify** | `jsonStringify` | Serializes objects into compact or indented JSON strings |
+| | **Date & Time** | `dateTime` | Date formatting, ISO conversions, and duration offsets |
+| **Flow Control** | **Delay** | `delay` | Configurable pause with safe execution bounds |
+| **Actions** | **HTTP Request** | `httpRequest` | Secure REST client with header configuration & strict SSRF defense |
+| | **Webhook Response**| `webhookResponse`| Returns custom status codes and payloads to incoming webhook callers |
+| | **Console Output** | `consoleOutput` | Multi-level runtime telemetry inspector (`info`, `warn`, `error`, `success`) |
 
 ---
 
@@ -112,156 +156,133 @@ flowchart TD
 
 | Component | Technology | Version | Purpose |
 | :--- | :--- | :--- | :--- |
-| **Framework** | React | `19.3.1` | UI presentation layer |
-| **Language** | TypeScript (Strict) | `~6.0.2` | Type-safety, zero `any` policy |
-| **Bundler** | Vite | `8.3.8` | Lightning fast HMR & production builds |
-| **Canvas** | @xyflow/react | `13.0.2` | Node-based graph editing canvas |
+| **Frontend Framework** | React | `19.3.1` | Modern concurrent UI layer |
+| **Language** | TypeScript | `~6.0.2` | Strict type safety, zero `any` policy |
+| **Bundler & Dev Server**| Vite | `8.3.8` | Sub-second HMR and production builds |
+| **Canvas Engine** | @xyflow/react | `13.0.2` | Interactive node-based graph editor |
 | **Styling** | Tailwind CSS | `4.3.5` | Modern CSS-first developer theme |
-| **State** | Zustand | `5.1.0` | Segregated document, UI, and execution state |
-| **Validation** | Zod | `4.6.7` | Node configurations & JSON import validation |
-| **Storage** | IndexedDB | Native | Local browser persistence & version history |
-| **Unit Testing** | Vitest | `5.1.1` | High-speed unit and performance tests |
-| **E2E Testing** | Playwright | `1.65.1` | End-to-end browser user workflow testing |
-| **Icons** | Lucide React | `1.76.0` | Developer tool iconography |
+| **State Management** | Zustand | `5.1.0` | Segregated document, UI, and execution state |
+| **Schema Validation** | Zod | `4.6.7` | Type-safe runtime schemas and validations |
+| **Backend Framework** | Fastify | `5.12.8` | High-performance HTTP server with plugins |
+| **Database & Auth** | Supabase PostgreSQL | `2.119.2` | Relational data, RLS, and JWT auth |
+| **Cryptography** | Node.js Crypto | Native | AES-256-GCM authenticated encryption |
+| **Unit & Integration** | Vitest | `5.1.1` | High-speed unit and integration test runner |
+| **E2E Testing** | Playwright | `1.65.1` | Headless browser integration tests |
+| **Iconography** | Lucide React | `1.76.0` | Developer tool iconography |
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Quickstart Guide
 
 ### Prerequisites
 - Node.js `18.0.0` or higher
 - npm `9.0.0` or higher
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/your-username/flowforge.git
-   cd flowforge
-   ```
+### 1. Installation
+```bash
+git clone https://github.com/your-username/flowforge.git
+cd flowforge
+npm install
+```
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+### 2. Environment Configuration
+```bash
+cp .env.example .env.local
+```
+*(The default `.env.example` comes pre-configured with local development fallbacks.)*
 
-3. Launch development server:
-   ```bash
-   npm run dev
-   ```
-   Open [http://localhost:5173](http://localhost:5173) in your browser.
+### 3. Launch Development Servers
+Run the backend server and frontend studio:
 
-4. Build for production:
-   ```bash
-   npm run build
-   ```
+```bash
+# Terminal 1: Backend Fastify Server & Worker
+npm run server
+
+# Terminal 2: Frontend Vite Studio
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
 
 ---
 
-## 🧪 Testing Instructions
+## 💻 Developer CLI (`flowforge`)
 
-FlowForge includes comprehensive testing across unit, integration, performance, and end-to-end levels:
+FlowForge includes a powerful CLI located in `packages/cli/`:
 
-### 1. Run Unit & Performance Tests (Vitest)
 ```bash
+# Display CLI help and command options
+npm run cli -- --help
+
+# Validate a workflow JSON file offline
+npm run cli -- workflow validate examples/01_user_onboarding_pipeline.json
+
+# Export a workflow safely without exposing secrets
+npm run cli -- workflow export <workflow-id> --out ./exported-workflow.json
+
+# List cloud workflows in your workspace
+npm run cli -- workflow list
+
+# Pull a workflow from your cloud workspace to local disk
+npm run cli -- workflow pull <workflow-id> --out ./workflow.json
+
+# Push a local workflow to your cloud workspace
+npm run cli -- workflow push ./workflow.json --overwrite
+```
+
+---
+
+## 🧪 Testing & Verification
+
+FlowForge enforces a strict zero-regression testing standard with **353 tests across 26 suites**:
+
+```bash
+# Run all unit and integration test suites
 npm test
-```
-Runs 8 test suites (65 tests), covering:
-- Connection validation rules
-- Node configurations and Zod schemas
-- Kahn's topological sort and cycle detection
-- SSRF and HTTP url security checks
-- Asynchronous concurrency scheduler
-- Scalability benchmarks on 200+ node graphs
-- IndexedDB storage and test assertion runner
 
-### 2. Run Type Checking
-```bash
-npx tsc --noEmit
-```
-
-### 3. Run ESLint Code Quality
-```bash
+# Run ESLint code quality checks
 npm run lint
-```
 
-### 4. Run End-to-End Tests (Playwright)
-```bash
+# Run strict TypeScript typechecking
+npx tsc --noEmit
+
+# Run production bundle build
+npm run build
+
+# Run end-to-end browser tests
 npm run test:e2e
+
+# Run production smoke test against staging or production URLs
+npm run smoke-test
 ```
-Executes headless browser tests validating:
-- Application shell, theme, and branding
-- Onboarding demo pipeline loading
-- Interactive workflow validation
-- Real workflow execution and log capture
-- Execution Debugger payload inspector
-- Testing Laboratory and Version History modals
 
 ---
 
-## 📂 Example Workflows
+## 🔒 Security & SSRF Defense
 
-Pre-built workflow templates are available in the `examples/` directory and can be imported directly into FlowForge via the **Import** button:
-
-1. [`examples/01_user_onboarding_pipeline.json`](file:///c:/Users/VASANTH/Desktop/flow/examples/01_user_onboarding_pipeline.json):
-   - Demonstrates: Manual trigger $\to$ Condition node $\to$ Rate-limiting Delay $\to$ VIP vs Standard notification sinks.
-2. [`examples/02_e_commerce_order_processing.json`](file:///c:/Users/VASANTH/Desktop/flow/examples/02_e_commerce_order_processing.json):
-   - Demonstrates: Webhook payload ingestion $\to$ Declarative price extraction $\to$ Threshold evaluation $\to$ Courier routing.
-3. [`examples/03_data_enrichment_and_filtering.json`](file:///c:/Users/VASANTH/Desktop/flow/examples/03_data_enrichment_and_filtering.json):
-   - Demonstrates: Multi-layer JSON parsing $\to$ Nested property extraction $\to$ Geographic cluster telemetry logging.
-
----
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut | Action | Scope |
-| :--- | :--- | :--- |
-| `Ctrl + S` / `Cmd + S` | Save active workflow | Editor |
-| `Ctrl + Z` / `Cmd + Z` | Undo last canvas/document edit | Editor |
-| `Ctrl + Shift + Z` / `Cmd + Shift + Z` | Redo last canvas/document edit | Editor |
-| `Ctrl + Y` | Redo last canvas/document edit | Editor |
-| `Ctrl + D` / `Cmd + D` | Duplicate currently selected node | Canvas |
-| `Ctrl + C` / `Cmd + C` | Copy currently selected node | Canvas |
-| `Ctrl + V` / `Cmd + V` | Paste copied node onto canvas | Canvas |
-| `Delete` / `Backspace` | Delete selected nodes or edges | Canvas |
+- **Zero-Trust Network Client (`SafeHttpClient`)**:
+  - Rejects IPv4 private networks (RFC 1918: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), loopbacks (`127.0.0.0/8`), link-local metadata addresses (`169.254.169.254`), carrier-grade NAT (`100.64.0.0/10`), and IPv6 equivalents (`::1`, `fc00::/7`, `fe80::/10`).
+  - **DNS Re-Resolution**: Performs immediate DNS resolution at connection time to defeat TOCTOU DNS rebinding attacks.
+  - **Port Allowlisting**: Restricts outbound traffic to standard ports (80, 443, 8080, 8443) and blocks internal service ports (SSH, Redis, MySQL, Postgres).
+- **Workspace RBAC**:
+  - Role hierarchy: `owner` > `admin` > `developer` > `viewer`.
+  - Viewers are strictly read-only; execution triggers and edits require `developer` or above; secret creation requires `admin` or above.
+- **Log & Header Redaction**:
+  - Automatic scrubbing of `Authorization`, `Cookie`, `X-Api-Key`, and vault secrets across all execution logs, error messages, and metrics.
 
 ---
 
-## ⚠️ Known Limitations & Design Tradeoffs
+## 📚 In-Depth Documentation
 
-1. **Browser Sandboxing on Network Requests**:
-   - HTTP Request nodes executed in the client browser are bounded by the browser's Cross-Origin Resource Sharing (CORS) policies. Public REST APIs with CORS enabled (e.g. GitHub API) work out-of-the-box. For arbitrary internal endpoints, a lightweight proxy backend would be recommended in enterprise deployments.
-2. **Safe Code Execution vs Declarative Transforms**:
-   - To strictly comply with security rules and eliminate arbitrary code execution vulnerabilities, FlowForge does not execute arbitrary `eval()` or `Function()` JavaScript. All transformations are performed using structured declarative path operations and JSON formatting.
-3. **DAG-Only Execution**:
-   - The engine is designed as a Directed Acyclic Graph. Loops or recursive cycles are flagged by Kahn's algorithm and rejected to prevent infinite client-side execution loops.
-
----
-
-## 🗺 Future Roadmap
-
-- [ ] Sub-workflows and composite node groups
-- [ ] Visual Expression Builder for complex conditional math
-- [ ] Webhook trigger endpoints via Edge Functions
-- [ ] Cron / Scheduled background trigger runner
-- [ ] Collaborative multi-user editing with WebSockets / WebRTC
-- [ ] Export directly to Node.js / Python standalone runner scripts
-
----
-
-## 🚢 Deployment
-
-### Deploying to Vercel
-FlowForge is pre-configured for zero-configuration Vercel deployment with [`vercel.json`](file:///c:/Users/VASANTH/Desktop/flow/vercel.json):
-
-1. Push your repository to GitHub:
-   ```bash
-   git add .
-   git commit -m "feat: complete FlowForge Studio Stage 7 release"
-   git remote add origin https://github.com/<your-username>/flowforge.git
-   git push -u origin main
-   ```
-2. Import the project into the [Vercel Dashboard](https://vercel.com/new).
-3. Vercel automatically detects the Vite framework, runs `npm run build`, and serves from `dist/`.
+Detailed architectural specifications and guides are available in the [`docs/`](docs/) directory:
+- [Architecture & Portfolio Case Study](docs/architecture-and-portfolio-case-study.md) — Comprehensive technical whitepaper
+- [5-Minute Quickstart Walkthrough](docs/quickstart-walkthrough.md) — Interactive evaluation guide
+- [Durable Execution & Queue Architecture](docs/durable-execution.md) — Atomic claims & recovery
+- [Credential Vault & Security Design](docs/credential-vault-security.md) — AES-256-GCM encryption & injection
+- [Time-Travel Debugging & Replay](docs/time-travel-debugging.md) — State reconstruction & node replays
+- [Monitoring & Observability](docs/monitoring-and-observability.md) — Probes, metrics, and alerting
+- [Scaling & Performance Manual](docs/scaling-and-performance.md) — Connection pooling & load boundaries
+- [Production Operations (SOP)](docs/production-operations.md) — Deployments, restarts, and incident recovery
+- [Developer CLI Guide](docs/cli-guide.md) — CLI usage and automation recipes
 
 ---
 

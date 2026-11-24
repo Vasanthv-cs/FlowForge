@@ -25,6 +25,10 @@ import {
   Cloud,
   HardDrive,
   UploadCloud,
+  Calendar,
+  KeyRound,
+  LayoutTemplate,
+  Activity,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import {
@@ -41,6 +45,10 @@ import { idbStorage } from '@/lib/indexedDb';
 import { validateImportedWorkflow } from '@/lib/workflowImportSchema';
 import { TestLabModal } from '@/components/testLab/TestLabModal';
 import { VersionHistoryModal } from '@/components/versioning/VersionHistoryModal';
+import { ScheduleModal } from '@/components/scheduling/ScheduleModal';
+import { CredentialModal } from '@/components/credentials/CredentialModal';
+import { TemplatesModal } from '@/components/templates/TemplatesModal';
+import { MonitoringDashboardModal } from '@/components/monitoring/MonitoringDashboardModal';
 import { WorkspaceSelector } from '@/components/workspace/WorkspaceSelector';
 import { UserNav } from '@/components/auth/UserNav';
 
@@ -91,6 +99,10 @@ export function TopNav() {
   const [showLoadMenu, setShowLoadMenu] = useState(false);
   const [showTestLab, setShowTestLab] = useState(false);
   const [showVersionHistory, setShowVersionHistory] = useState(false);
+  const [showSchedules, setShowSchedules] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showMonitoring, setShowMonitoring] = useState(false);
   const [cloudWorkflows, setCloudWorkflows] = useState<CloudWorkflowSummary[]>([]);
   const [isLoadingCloudWorkflows, setIsLoadingCloudWorkflows] = useState(false);
   const [userMenuTab, setUserMenuTab] = useState<'cloud' | 'local' | null>(null);
@@ -815,6 +827,50 @@ export function TopNav() {
           Versions
         </Button>
 
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowSchedules(true)}
+          className="text-xs text-teal-300 hover:text-teal-100 hover:bg-teal-900/20 flex items-center gap-1.5"
+          title="Workflow Schedules & Automated Triggers"
+        >
+          <Calendar className="h-3.5 w-3.5 text-teal-400" />
+          Schedules
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowCredentials(true)}
+          className="text-xs text-amber-300 hover:text-amber-100 hover:bg-amber-900/20 flex items-center gap-1.5"
+          title="Workspace Credential Vault & Encrypted Secrets"
+        >
+          <KeyRound className="h-3.5 w-3.5 text-amber-400" />
+          Credentials
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowTemplates(true)}
+          className="text-xs text-pink-300 hover:text-pink-100 hover:bg-pink-900/20 flex items-center gap-1.5"
+          title="Workflow Templates & Starter Library"
+        >
+          <LayoutTemplate className="h-3.5 w-3.5 text-pink-400" />
+          Templates
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowMonitoring(true)}
+          className="text-xs text-emerald-300 hover:text-emerald-100 hover:bg-emerald-900/20 flex items-center gap-1.5"
+          title="Operational Monitoring & System Metrics"
+        >
+          <Activity className="h-3.5 w-3.5 text-emerald-400" />
+          Monitoring
+        </Button>
+
         <div className="h-4 w-px bg-[#2a2a3e] mx-0.5" />
 
         <Button variant="secondary" size="sm" onClick={handleValidate}>
@@ -884,6 +940,30 @@ export function TopNav() {
       <VersionHistoryModal
         isOpen={showVersionHistory}
         onClose={() => setShowVersionHistory(false)}
+      />
+
+      {/* Batch 10 Workflow Schedules Modal */}
+      <ScheduleModal
+        isOpen={showSchedules}
+        onClose={() => setShowSchedules(false)}
+      />
+
+      {/* Batch 11 Credential Vault Modal */}
+      <CredentialModal
+        isOpen={showCredentials}
+        onClose={() => setShowCredentials(false)}
+      />
+
+      {/* Batch 15 Workflow Templates Modal */}
+      <TemplatesModal
+        isOpen={showTemplates}
+        onClose={() => setShowTemplates(false)}
+      />
+
+      {/* Batch 16 Operational Monitoring Dashboard Modal */}
+      <MonitoringDashboardModal
+        isOpen={showMonitoring}
+        onClose={() => setShowMonitoring(false)}
       />
     </header>
   );

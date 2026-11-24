@@ -23,13 +23,48 @@ export interface TimelineEvent {
 }
 
 /* ── Engine Run Options ─────────────────────────────── */
+export interface MockNodeConfig {
+  enabled: boolean;
+  statusCode?: number;
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
 export interface EngineRunOptions {
+  workspaceId?: string;
   maxConcurrency?: number; // default: 4
   timeoutMs?: number;      // default: 300,000 (5 minutes)
   overrideTriggerPayload?: Record<string, unknown>; // For Testing Lab
+  testMode?: boolean;      // Safe test mode
+  mockResponses?: Record<string, MockNodeConfig>; // Node ID -> Mock response
   onNodeStateChange?: (record: NodeExecutionRecord) => void;
   onTimelineEvent?: (event: TimelineEvent) => void;
   onLog?: (log: { level: 'info' | 'warn' | 'error' | 'log'; nodeId?: string; nodeLabel?: string; message: string }) => void;
+
+  // Time-Travel Replay options
+  replayFromNodeId?: string;
+  replayedFromExecutionId?: string;
+  reusedNodeRecords?: Record<string, NodeExecutionRecord>;
+  editedNodeInputs?: Record<string, Record<string, unknown>>;
+  safeReplayMode?: boolean;
+  originalNodeRecords?: Record<string, NodeExecutionRecord>;
+}
+
+/* ── Time-Travel Replay Types ───────────────────────── */
+export interface ReplayPartition {
+  targetNodeId: string;
+  reusedNodeIds: string[];
+  reexecutedNodeIds: string[];
+  downstreamNodeIds: string[];
+}
+
+export interface ReplayExecutionMetadata {
+  replayedFromExecutionId: string;
+  replayFromNodeId: string;
+  isReplay: boolean;
+  safeReplay: boolean;
+  reusedNodeIds: string[];
+  reexecutedNodeIds: string[];
 }
 
 /* ── Workflow Run Result ────────────────────────────── */

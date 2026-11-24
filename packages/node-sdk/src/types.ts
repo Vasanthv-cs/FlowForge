@@ -18,6 +18,8 @@ export interface NodeExecutionRecord {
   outputData?: Record<string, unknown>;
   error?: string;
   selectedBranch?: 'true' | 'false';
+  isMocked?: boolean;
+  isReused?: boolean;
 }
 
 export interface NodeExecutionResult {
@@ -33,9 +35,11 @@ export interface ExecutionContext<
 > {
   executionId: string;
   workflowId: string;
+  workspaceId?: string;
   node: TNode;
   upstreamOutputs: Record<string, Record<string, unknown>>;
   incomingPayload: Record<string, unknown>;
+  triggerPayload?: Record<string, unknown>;
   incomingEdge?: TEdge;
   emitLog: (level: 'info' | 'warn' | 'error' | 'log', message: string) => void;
   signal?: AbortSignal;

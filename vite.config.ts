@@ -21,11 +21,15 @@ export default defineConfig({
       '@flowforge/workflow-core': fileURLToPath(
         new URL('./packages/workflow-core/src/index.ts', import.meta.url),
       ),
+      '@flowforge/cli': fileURLToPath(
+        new URL('./packages/cli/src/index.ts', import.meta.url),
+      ),
     },
   },
   test: {
     environment: 'jsdom',
     globals: true,
+    pool: 'threads',
     exclude: ['**/e2e/**', '**/node_modules/**', '**/dist/**', 'playwright.config.ts'],
   },
 });

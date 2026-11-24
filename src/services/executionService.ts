@@ -457,4 +457,61 @@ export const executionService = {
       return { data: null, error: err instanceof Error ? err.message : 'Failed to retrieve execution details' };
     }
   },
+
+  /**
+   * Replays an execution from a specific node using backend API.
+   */
+  async replayExecution(params: {
+    workspaceId: string;
+    executionId: string;
+    targetNodeId: string;
+    editedInput?: Record<string, unknown>;
+    safeReplay?: boolean;
+  }): Promise<{
+    data: {
+      executionId: string;
+      status: string;
+      replayedFromExecutionId: string;
+      replayFromNodeId: string;
+      reusedNodeIds: string[];
+      reexecutedNodeIds: string[];
+      safeReplay: boolean;
+    } | null;
+    error: string | null;
+  }> {
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
+        `/api/workspaces/${params.workspaceId}/executions/${params.executionId}/replay`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            targetNodeId: params.targetNodeId,
+            editedInput: params.editedInput,
+            safeReplay: params.safeReplay ?? true,
+          }),
+        }
+      );
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { data: null, error: json.message || 'Failed to replay execution' };
+      }
+
+      return { data: json, error: null };
+    } catch (err) {
+      return {
+        data: null,
+        error: err instanceof Error ? err.message : 'Network error during replay request',
+      };
+    }
+  },
 };

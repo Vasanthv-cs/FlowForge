@@ -21,11 +21,23 @@ import { useWorkflowStore } from '@/store/workflowStore';
 import { validateNodeConfig } from '@/lib/nodeValidation';
 
 import { ManualTriggerConfigPanel } from '@/components/config/panels/ManualTriggerConfigPanel';
+import { WebhookTriggerConfigPanel } from '@/components/config/panels/WebhookTriggerConfigPanel';
+import { ScheduleTriggerConfigPanel } from '@/components/config/panels/ScheduleTriggerConfigPanel';
 import { HttpRequestConfigPanel } from '@/components/config/panels/HttpRequestConfigPanel';
 import { TransformDataConfigPanel } from '@/components/config/panels/TransformDataConfigPanel';
 import { ConditionConfigPanel } from '@/components/config/panels/ConditionConfigPanel';
 import { DelayConfigPanel } from '@/components/config/panels/DelayConfigPanel';
 import { ConsoleOutputConfigPanel } from '@/components/config/panels/ConsoleOutputConfigPanel';
+import { JsonParseConfigPanel } from '@/components/config/panels/JsonParseConfigPanel';
+import { JsonStringifyConfigPanel } from '@/components/config/panels/JsonStringifyConfigPanel';
+import { SetDataConfigPanel } from '@/components/config/panels/SetDataConfigPanel';
+import { MergeDataConfigPanel } from '@/components/config/panels/MergeDataConfigPanel';
+import { FilterDataConfigPanel } from '@/components/config/panels/FilterDataConfigPanel';
+import { MapDataConfigPanel } from '@/components/config/panels/MapDataConfigPanel';
+import { StringOperationsConfigPanel } from '@/components/config/panels/StringOperationsConfigPanel';
+import { DateTimeConfigPanel } from '@/components/config/panels/DateTimeConfigPanel';
+import { MathOperationsConfigPanel } from '@/components/config/panels/MathOperationsConfigPanel';
+import { WebhookResponseConfigPanel } from '@/components/config/panels/WebhookResponseConfigPanel';
 
 export function RightSidebar() {
   const selectedNodeId = useWorkflowStore((s) => s.selectedNodeId);
@@ -287,6 +299,20 @@ export function RightSidebar() {
                 />
               )}
 
+              {data.type === 'webhook-trigger' && (
+                <WebhookTriggerConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'schedule-trigger' && (
+                <ScheduleTriggerConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
               {data.type === 'http-request' && (
                 <HttpRequestConfigPanel
                   node={selectedNode}
@@ -317,6 +343,76 @@ export function RightSidebar() {
 
               {data.type === 'console-output' && (
                 <ConsoleOutputConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'json-parse' && (
+                <JsonParseConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'json-stringify' && (
+                <JsonStringifyConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'set-data' && (
+                <SetDataConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'merge-data' && (
+                <MergeDataConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'filter-data' && (
+                <FilterDataConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'map-data' && (
+                <MapDataConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'string-operations' && (
+                <StringOperationsConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'date-time' && (
+                <DateTimeConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'math-operations' && (
+                <MathOperationsConfigPanel
+                  node={selectedNode}
+                  onUpdate={handleConfigUpdate}
+                />
+              )}
+
+              {data.type === 'webhook-response' && (
+                <WebhookResponseConfigPanel
                   node={selectedNode}
                   onUpdate={handleConfigUpdate}
                 />

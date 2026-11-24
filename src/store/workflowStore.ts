@@ -545,7 +545,8 @@ export const useWorkflowStore = create<FullWorkflowStore>((set, get) => ({
           const { error } = await cloudWorkflowService.saveWorkflow(
             state.workflowId,
             state.workflowName,
-            currentWorkflowData
+            currentWorkflowData,
+            targetWorkspaceId
           );
           if (error) throw new Error(error);
         } else {
@@ -893,7 +894,7 @@ export const useWorkflowStore = create<FullWorkflowStore>((set, get) => ({
               }));
             }
 
-            if (['success', 'failed', 'cancelled'].includes(execution.status)) {
+            if (['success', 'failed', 'cancelled', 'interrupted'].includes(execution.status)) {
               isDone = true;
               const isSuccess = execution.status === 'success';
               set({ isRunning: false });

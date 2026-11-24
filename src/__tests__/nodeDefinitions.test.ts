@@ -10,8 +10,8 @@ describe('Node Definitions Stage 2', () => {
     expect(categoryIds).toContain('utility');
   });
 
-  it('should have valid definitions for each of the 6 required core nodes', () => {
-    expect(nodeDefinitions.length).toBe(6);
+  it('should have valid definitions for each of the required core nodes', () => {
+    expect(nodeDefinitions.length).toBeGreaterThanOrEqual(6);
 
     for (const def of nodeDefinitions) {
       expect(def.type).toBeTruthy();

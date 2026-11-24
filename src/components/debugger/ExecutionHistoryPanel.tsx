@@ -15,9 +15,13 @@ import {
   Loader2,
   Slash,
   FileJson,
+  RotateCcw,
+  Eye,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useWorkflowStore } from '@/store/workflowStore';
+import { useWorkspaceStore } from '@/store/workspaceStore';
+import { ReplayModal } from './ReplayModal';
 import {
   executionService,
   type ExecutionSummary,
@@ -42,6 +46,12 @@ export function ExecutionHistoryPanel() {
   const [detailsTab, setDetailsTab] = useState<'nodes' | 'events' | 'snapshot'>('nodes');
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [replayModalNode, setReplayModalNode] = useState<NodeExecutionItem | null>(null);
+
+  const setSelectedNodeId = useWorkflowStore((s) => s.setSelectedNodeId);
+  const storeWorkspaceId = useWorkflowStore((s) => s.workspaceId);
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const currentWorkspaceId = storeWorkspaceId || activeWorkspaceId;
 
   const isCloud = isCloudWorkflow && isUUID(workflowId);
 
@@ -119,6 +129,14 @@ export function ExecutionHistoryPanel() {
       return (
         <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
           <AlertTriangle className="h-3 w-3" /> Interrupted
+        </span>
+      );
+    }
+
+    if (status === 'reused') {
+      return (
+        <span className="flex items-center gap-1 text-[11px] font-medium text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+          <RotateCcw className="h-3 w-3" /> Reused
         </span>
       );
     }
@@ -269,13 +287,35 @@ export function ExecutionHistoryPanel() {
                           {getStatusBadge(node.status)}
                         </div>
 
-                        <div className="flex items-center gap-3 text-gray-400 font-mono text-[11px]">
+                        <div className="flex items-center gap-1.5">
                           {node.durationMs !== null && (
-                            <span className="flex items-center gap-1 text-gray-400">
+                            <span className="flex items-center gap-1 text-gray-400 font-mono text-[11px] mr-1">
                               <Clock className="h-3 w-3 text-gray-500" />
                               {node.durationMs}ms
                             </span>
                           )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedNodeId(node.nodeId);
+                            }}
+                            title="Locate and inspect node on canvas"
+                            className="h-6 px-1.5 rounded text-[10px] bg-[#222238] hover:bg-[#2e2e4a] text-gray-300 flex items-center gap-1 transition-colors"
+                          >
+                            <Eye className="h-3 w-3 text-cyan-400" /> Focus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReplayModalNode(node);
+                            }}
+                            title="Replay workflow starting from this node"
+                            className="h-6 px-2 rounded text-[10px] bg-violet-600/30 hover:bg-violet-600/50 text-violet-200 border border-violet-500/40 flex items-center gap-1 font-medium transition-colors"
+                          >
+                            <RotateCcw className="h-3 w-3 text-violet-300" /> Replay
+                          </button>
                         </div>
                       </div>
 
@@ -287,6 +327,46 @@ export function ExecutionHistoryPanel() {
                               <span className="font-bold">Error:</span> {node.errorMessage}
                             </div>
                           )}
+
+                          {/* Branch Decision if Condition Node */}
+                          {node.nodeType === 'condition' &&
+                            Boolean((node.outputPayload as Record<string, unknown>)?._condition) && (
+                              <div className="p-2 rounded bg-amber-950/20 border border-amber-500/30 text-amber-300 text-[11px] flex items-center gap-2">
+                                <span className="font-semibold">Branch Decision Evaluated:</span>
+                                <span className="font-mono uppercase px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 font-bold">
+                                  {String(
+                                    (
+                                      (node.outputPayload as Record<string, unknown>)
+                                        ._condition as Record<string, unknown>
+                                    )?.branch
+                                  ).toUpperCase()}
+                                </span>
+                              </div>
+                            )}
+
+                          {/* Snapshot Config */}
+                          {Boolean(details.definitionSnapshot?.nodes) &&
+                            (() => {
+                              const snapshotNode = (
+                                details.definitionSnapshot!.nodes as Array<{
+                                  id: string;
+                                  data?: { config?: unknown };
+                                }>
+                              ).find((n) => n.id === node.nodeId);
+                              if (!snapshotNode?.data?.config) return null;
+                              return (
+                                <div>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-[10px] font-semibold uppercase text-gray-400">
+                                      Node Configuration (Snapshot At Run)
+                                    </span>
+                                  </div>
+                                  <pre className="rounded bg-[#0d0d15] border border-[#222234] p-2 text-[10px] font-mono text-gray-300 max-h-28 overflow-y-auto">
+                                    {JSON.stringify(snapshotNode.data.config, null, 2)}
+                                  </pre>
+                                </div>
+                              );
+                            })()}
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
@@ -407,6 +487,21 @@ export function ExecutionHistoryPanel() {
             </div>
           )}
         </div>
+        {/* Replay Modal */}
+        {Boolean(replayModalNode && currentWorkspaceId && selectedExecutionId) && (
+          <ReplayModal
+            isOpen={true}
+            onClose={() => setReplayModalNode(null)}
+            targetNode={replayModalNode!}
+            executionId={selectedExecutionId!}
+            workspaceId={currentWorkspaceId!}
+            snapshotDefinition={details ? details.definitionSnapshot : null}
+            onReplaySuccess={(newExecutionId) => {
+              handleRefresh();
+              handleSelectExecution(newExecutionId);
+            }}
+          />
+        )}
       </div>
     );
   }

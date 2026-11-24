@@ -1,0 +1,15 @@
+{
+  "name": "@flowforge/cli",
+  "version": "0.1.0",
+  "description": "FlowForge Developer Command-Line Interface",
+  "type": "module",
+  "main": "./src/index.ts",
+  "bin": {
+    "flowforge": "./bin/flowforge.js"
+  },
+  "dependencies": {
+    "@flowforge/shared": "0.1.0",
+    "@flowforge/workflow-core": "0.1.0",
+    "@flowforge/workflow-schema": "0.1.0"
+  }
+}

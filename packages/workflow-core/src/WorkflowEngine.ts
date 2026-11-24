@@ -1,6 +1,7 @@
 import type { BaseWorkflowNode, BaseWorkflowEdge } from '@flowforge/workflow-schema';
 import type {
   NodeExecutionRecord,
+  NodeExecutionResult,
   ExecutionContext,
   INodeRegistry,
 } from '@flowforge/node-sdk';
@@ -162,6 +163,48 @@ export class WorkflowEngine<
     let hasEngineError = false;
     let engineErrorMessage: string | undefined;
 
+    // Initialize Reused Node Records for Time-Travel Replay
+    if (options.reusedNodeRecords && Object.keys(options.reusedNodeRecords).length > 0) {
+      for (const [reusedId, reusedRec] of Object.entries(options.reusedNodeRecords)) {
+        if (!nodeMap.has(reusedId)) continue;
+        const node = nodeMap.get(reusedId)!;
+        records[reusedId] = {
+          ...reusedRec,
+          state: 'success',
+          isReused: true,
+          durationMs: 0,
+        };
+        if (reusedRec.outputData) {
+          nodeOutputs[reusedId] = { ...reusedRec.outputData };
+        }
+        completedCount++;
+        emitTimeline(
+          'node_completed',
+          `Reused execution data for "${node.data.label}" from run ${options.replayedFromExecutionId?.slice(0, 8) || 'history'}`,
+          node.id,
+          node.data.label,
+          0,
+          {
+            reused: true,
+            replayedFromExecutionId: options.replayedFromExecutionId,
+          }
+        );
+        log(
+          'info',
+          `[Replay] Reused recorded output for "${node.data.label}" without re-executing.`,
+          node.id,
+          node.data.label
+        );
+        options.onNodeStateChange?.(records[reusedId]);
+
+        // Decrement inDegree of dependent child nodes
+        const children = analysis.dependentMap[reusedId] ?? [];
+        for (const childId of children) {
+          inDegree[childId]--;
+        }
+      }
+    }
+
     const evaluateReadyNodes = (): string[] => {
       const ready: string[] = [];
       for (const node of nodes) {
@@ -271,6 +314,10 @@ export class WorkflowEngine<
             incomingPayload = { ...options.overrideTriggerPayload };
           }
 
+          if (options.editedNodeInputs?.[nextNodeId]) {
+            incomingPayload = { ...incomingPayload, ...options.editedNodeInputs[nextNodeId] };
+          }
+
           (async () => {
             try {
               const contextNode = (node.data.category === 'trigger' && options.overrideTriggerPayload)
@@ -294,6 +341,7 @@ export class WorkflowEngine<
               const context: ExecutionContext<TNode, TEdge> = {
                 executionId,
                 workflowId,
+                workspaceId: options.workspaceId,
                 node: contextNode,
                 upstreamOutputs: nodeOutputs,
                 incomingPayload,
@@ -301,7 +349,71 @@ export class WorkflowEngine<
                 signal,
               };
 
-              const result = await executor.execute(context);
+              let result: NodeExecutionResult;
+              let isMocked = false;
+
+              // Check for Deterministic Test Mode mock response or Safe Replay Mode auto-mock
+              let mock = options.mockResponses?.[nextNodeId];
+              const isSafeReplay =
+                options.safeReplayMode !== false &&
+                Boolean(options.replayedFromExecutionId || options.replayFromNodeId);
+
+              if (
+                !mock &&
+                isSafeReplay &&
+                (node.data.type === 'http-request' || node.data.type === 'webhook-response')
+              ) {
+                const recorded = options.originalNodeRecords?.[nextNodeId];
+                if (recorded && recorded.outputData) {
+                  mock = {
+                    enabled: true,
+                    statusCode: (recorded.outputData.status as number) ?? 200,
+                    body: recorded.outputData.data ?? recorded.outputData,
+                    headers: (recorded.outputData.headers as Record<string, string>) ?? {
+                      'content-type': 'application/json',
+                    },
+                  };
+                }
+              }
+
+              if (mock && mock.enabled) {
+                isMocked = true;
+                const reasonTag = isSafeReplay ? '[Safe Replay]' : '[Test Mode]';
+                log(
+                  'info',
+                  `${reasonTag} Using recorded mock response for node "${node.data.label}". No external request dispatched.`,
+                  node.id,
+                  node.data.label,
+                );
+
+                const status = mock.statusCode ?? 200;
+                let parsedBody = mock.body;
+                if (typeof parsedBody === 'string') {
+                  try {
+                    parsedBody = JSON.parse(parsedBody);
+                  } catch {
+                    // Retain literal text if not JSON
+                  }
+                }
+                const mockHeaders = mock.headers ?? { 'content-type': 'application/json' };
+                const mockOutput: Record<string, unknown> = {
+                  status,
+                  statusText: status >= 200 && status < 300 ? 'OK' : 'Mocked Response',
+                  headers: mockHeaders,
+                  data: parsedBody ?? {},
+                  ok: status >= 200 && status < 400,
+                  isMocked: true,
+                };
+
+                result = {
+                  success: status >= 200 && status < 400,
+                  output: mockOutput,
+                  error: status >= 400 ? `Mocked HTTP response returned status ${status}` : undefined,
+                };
+              } else {
+                result = await executor.execute(context);
+              }
+
               const durationMs = Date.now() - nodeStartTime;
 
               if (result.success) {
@@ -313,10 +425,14 @@ export class WorkflowEngine<
                   inputData: incomingPayload,
                   outputData: result.output,
                   selectedBranch: result.selectedBranch,
+                  isMocked,
+                  isReused: false,
                 });
                 emitTimeline(
                   'node_completed',
-                  `Completed "${node.data.label}" (${durationMs}ms)`,
+                  isMocked
+                    ? `Completed "${node.data.label}" (MOCKED, ${durationMs}ms)`
+                    : `Completed "${node.data.label}" (${durationMs}ms)`,
                   node.id,
                   node.data.label,
                   durationMs,
@@ -335,7 +451,10 @@ export class WorkflowEngine<
                   completedAt: Date.now(),
                   durationMs,
                   inputData: incomingPayload,
+                  outputData: result.output,
                   error: result.error ?? 'Execution failed',
+                  isMocked,
+                  isReused: false,
                 });
                 emitTimeline(
                   'node_failed',

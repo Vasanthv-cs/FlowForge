@@ -58,9 +58,10 @@ flowchart TD
 | `CORS_ORIGIN` | Backend | Server Only | Internal | Explicit production origin(s), e.g. `https://flowforge.app` |
 | `RATE_LIMIT_MAX` | Backend | Server Only | Internal | Requests per minute per IP (default `100` or `200`) |
 | `ENFORCE_HTTPS` | Backend | Server Only | Internal | Set to `true` to reject unencrypted HTTP |
+| `FLOWFORGE_ENCRYPTION_KEY` | Backend | Server Only | **HIGHLY SENSITIVE** | 256-bit (64 hex char) master key for Credential Vault AES-256-GCM |
 
 > [!CAUTION]
-> **Zero Credential Leakage Rule:** `SUPABASE_SERVICE_ROLE_KEY` must **never** be prefixed with `VITE_` or added to the frontend hosting environment. If exposed to the browser, an attacker would bypass all database RLS policies.
+> **Zero Credential Leakage Rule:** `SUPABASE_SERVICE_ROLE_KEY` and `FLOWFORGE_ENCRYPTION_KEY` must **never** be prefixed with `VITE_` or added to the frontend hosting environment. If exposed to the browser, an attacker would bypass all database RLS policies or gain decrypt capabilities over stored secrets.
 
 ---
 
@@ -73,6 +74,10 @@ flowchart TD
    - `20261122110000_auth_triggers_and_rbac_policies.sql` (Auth Triggers, Membership Functions)
    - `20261122120000_execution_node_label.sql` (Node Label tracking)
    - `20261123100000_production_hardening.sql` (Interrupted Status check constraint & indexes)
+   - `20261123120000_durable_execution_and_retries.sql` (Durable queue, retry counters & leases)
+   - `20261123140000_webhook_and_scheduled_triggers.sql` (Webhook endpoints & trigger bindings)
+   - `20261123150000_scheduled_workflows_and_recurring_automation.sql` (Cron scheduler & missed run policies)
+   - `20261124100000_credential_vault.sql` (Workspace Credential Vault & encrypted secret storage)
 3. Alternatively, link your local repository to Supabase CLI:
    ```bash
    npx supabase link --project-ref <your-project-id>

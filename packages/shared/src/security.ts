@@ -104,10 +104,11 @@ const SENSITIVE_KEY_PATTERNS = [
   /token/i,
   /bearer/i,
   /authorization/i,
+  /proxy[-_]?authorization/i,
   /cookie/i,
   /private[-_]?key/i,
   /credential/i,
-  /(api[-_]?key|access[-_]?key|^key$)/i,
+  /(api[-_]?key|access[-_]?key|^key$|x-api-key)/i,
 ];
 
 // Structural containers that might hold credentials, headers, or auth configs

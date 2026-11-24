@@ -332,6 +332,26 @@ export class WorkspaceService {
       };
     }
   }
+
+  /**
+   * Returns current count of queued and running executions across the database.
+   */
+  async getQueueMetrics(): Promise<{ queued: number; running: number }> {
+    try {
+      const supabase = getSupabaseAdminClient();
+      const [queuedRes, runningRes] = await Promise.all([
+        supabase.from('executions').select('id', { count: 'exact', head: true }).eq('status', 'queued'),
+        supabase.from('executions').select('id', { count: 'exact', head: true }).eq('status', 'running'),
+      ]);
+
+      return {
+        queued: queuedRes.count ?? 0,
+        running: runningRes.count ?? 0,
+      };
+    } catch {
+      return { queued: 0, running: 0 };
+    }
+  }
 }
 
 export const workspaceService = new WorkspaceService();

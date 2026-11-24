@@ -5,11 +5,23 @@ import type {
 } from '@flowforge/workflow-schema';
 import {
   manualTriggerSchema,
+  webhookTriggerSchema,
+  scheduleTriggerSchema,
   httpRequestSchema,
   transformDataSchema,
   conditionSchema,
   delaySchema,
   consoleOutputSchema,
+  jsonParseSchema,
+  jsonStringifySchema,
+  setDataSchema,
+  mergeDataSchema,
+  filterDataSchema,
+  mapDataSchema,
+  stringOperationsSchema,
+  dateTimeSchema,
+  mathOperationsSchema,
+  webhookResponseSchema,
 } from '@flowforge/workflow-schema';
 
 /**
@@ -32,6 +44,38 @@ export function validateNodeConfig<TNode extends BaseWorkflowNode = BaseWorkflow
               nodeId: node.id,
               nodeLabel: label,
               message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'webhook-trigger': {
+        const result = webhookTriggerSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: `${issue.path.join('.')}: ${issue.message}`,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'schedule-trigger': {
+        const result = scheduleTriggerSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: `${issue.path.join('.')}: ${issue.message}`,
               severity: 'error',
             });
           });
@@ -105,6 +149,166 @@ export function validateNodeConfig<TNode extends BaseWorkflowNode = BaseWorkflow
 
       case 'console-output': {
         const result = consoleOutputSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'json-parse': {
+        const result = jsonParseSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'json-stringify': {
+        const result = jsonStringifySchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'set-data': {
+        const result = setDataSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'merge-data': {
+        const result = mergeDataSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'filter-data': {
+        const result = filterDataSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'map-data': {
+        const result = mapDataSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'string-operations': {
+        const result = stringOperationsSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'date-time': {
+        const result = dateTimeSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'math-operations': {
+        const result = mathOperationsSchema.safeParse(config);
+        if (!result.success) {
+          result.error.issues.forEach((issue) => {
+            errors.push({
+              id: `${node.id}-${issue.path.join('.')}`,
+              nodeId: node.id,
+              nodeLabel: label,
+              message: issue.message,
+              severity: 'error',
+            });
+          });
+        }
+        break;
+      }
+
+      case 'webhook-response': {
+        const result = webhookResponseSchema.safeParse(config);
         if (!result.success) {
           result.error.issues.forEach((issue) => {
             errors.push({

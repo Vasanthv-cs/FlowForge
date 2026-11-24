@@ -5,6 +5,11 @@ import { loadConfig, parseCorsOrigins, type ServerConfig } from './config.ts';
 import { getLoggerConfig } from './logger.ts';
 import { healthRoutes } from './routes/health.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
+import { webhookRoutes } from './routes/webhooks.ts';
+import { scheduleRoutes } from './routes/schedules.ts';
+import { credentialRoutes } from './routes/credentials.ts';
+import { templateRoutes } from './routes/templates.ts';
+import { metricsRoutes } from './routes/metrics.ts';
 
 export interface BuildAppOptions {
   configOverride?: Partial<ServerConfig>;
@@ -67,6 +72,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   // 5. Register Application Routes
   await app.register(healthRoutes);
   await app.register(workspaceRoutes);
+  await app.register(webhookRoutes);
+  await app.register(scheduleRoutes);
+  await app.register(credentialRoutes);
+  await app.register(templateRoutes);
+  await app.register(metricsRoutes);
 
   // 6. Custom Error Handler with Sensitive Data Masking
   app.setErrorHandler((error: FastifyError | Error, _request, reply) => {

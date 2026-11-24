@@ -1,4 +1,5 @@
 import type { FastifyServerOptions } from 'fastify';
+import { redactSensitiveData } from '@flowforge/shared';
 
 /**
  * Structured Pino logger configuration with strict sensitive data redaction.
@@ -61,3 +62,46 @@ export function getLoggerConfig(isTest = process.env.NODE_ENV === 'test'): Fasti
     },
   };
 }
+
+export interface StructuredLogFields {
+  reqId?: string;
+  executionId?: string;
+  workspaceId?: string;
+  workflowId?: string;
+  service?: string;
+  event?: string;
+  [key: string]: unknown;
+}
+
+function formatLogPayload(objOrMsg: unknown, msg?: string): string {
+  const timestamp = new Date().toISOString();
+  if (typeof objOrMsg === 'string') {
+    return JSON.stringify({
+      timestamp,
+      service: 'flowforge-backend',
+      message: msg ? `${objOrMsg}: ${msg}` : objOrMsg,
+    });
+  }
+
+  const sanitized = redactSensitiveData(objOrMsg as Record<string, unknown>);
+  return JSON.stringify({
+    timestamp,
+    service: 'flowforge-backend',
+    message: msg,
+    ...(typeof sanitized === 'object' && sanitized !== null ? sanitized : { data: sanitized }),
+  });
+}
+
+export const serverLogger = {
+  info: (objOrMsg: unknown, msg?: string) => {
+    if (process.env.NODE_ENV !== 'test') {
+      console.log(formatLogPayload(objOrMsg, msg));
+    }
+  },
+  warn: (objOrMsg: unknown, msg?: string) => {
+    console.warn(formatLogPayload(objOrMsg, msg));
+  },
+  error: (objOrMsg: unknown, msg?: string) => {
+    console.error(formatLogPayload(objOrMsg, msg));
+  },
+};

@@ -1,8 +1,26 @@
 {
   "name": "flowforge",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0-rc1",
+  "description": "Visual Workflow Programming Studio and Distributed Automation Platform built with React 19, Fastify, Supabase PostgreSQL, and strict TypeScript.",
+  "keywords": [
+    "workflow",
+    "automation",
+    "dag",
+    "visual-programming",
+    "react-flow",
+    "xyflow",
+    "fastify",
+    "supabase",
+    "durable-execution",
+    "orchestration"
+  ],
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -10,9 +28,13 @@
     "lint": "eslint .",
     "server": "tsx src/server/index.ts",
     "server:dev": "tsx watch src/server/index.ts",
+    "cli": "tsx packages/cli/src/index.ts",
     "smoke-test": "tsx scripts/smokeTest.ts",
     "test": "vitest run",
     "test:e2e": "playwright test"
+  },
+  "bin": {
+    "flowforge": "./packages/cli/bin/flowforge.js"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

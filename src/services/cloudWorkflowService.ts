@@ -156,6 +156,8 @@ export const cloudWorkflowService = {
         return { data: null, error: error?.message || 'Failed to create workflow' };
       }
 
+      void this.syncTriggers(newId, workspaceId, (definition.nodes || []) as never);
+
       return { data: data.id, error: null };
     } catch (err) {
       return { data: null, error: err instanceof Error ? err.message : 'Failed to create workflow' };
@@ -168,7 +170,8 @@ export const cloudWorkflowService = {
   async saveWorkflow(
     workflowId: string,
     name: string,
-    definition: SavedWorkflow
+    definition: SavedWorkflow,
+    workspaceId?: string
   ): Promise<{ error: string | null }> {
     try {
       const {
@@ -194,6 +197,10 @@ export const cloudWorkflowService = {
 
       if (error) {
         return { error: error.message };
+      }
+
+      if (workspaceId) {
+        void this.syncTriggers(workflowId, workspaceId, (definition.nodes || []) as never);
       }
 
       return { error: null };
@@ -242,6 +249,96 @@ export const cloudWorkflowService = {
       return { error: null };
     } catch (err) {
       return { error: err instanceof Error ? err.message : 'Failed to delete workflow' };
+    }
+  },
+
+  /**
+   * Synchronizes webhook and schedule triggers into indexed database tables.
+   */
+  async syncTriggers(
+    workflowId: string,
+    workspaceId: string,
+    nodes: Array<{ id: string; type: string; data?: { config?: Record<string, unknown> } }>
+  ): Promise<void> {
+    try {
+      const webhookNodes = nodes.filter((n) => n.type === 'webhook-trigger');
+      if (webhookNodes.length === 0) {
+        const whBuilder = supabase.from('workflow_webhooks');
+        if (whBuilder && typeof whBuilder.delete === 'function') {
+          await whBuilder.delete().eq('workflow_id', workflowId);
+        }
+      } else {
+        for (const node of webhookNodes) {
+          const cfg = (node.data?.config || {}) as Record<string, unknown>;
+          const path = (cfg.path as string) || `whk_${workflowId.slice(0, 8)}_${node.id}`;
+          await supabase.from('workflow_webhooks').upsert(
+            {
+              workflow_id: workflowId,
+              workspace_id: workspaceId,
+              node_id: node.id,
+              path,
+              http_method: (cfg.httpMethod as string) || 'POST',
+              auth_type: (cfg.authType as string) || 'none',
+              secret_token: (cfg.secret as string) || null,
+              header_name: (cfg.headerName as string) || 'X-Webhook-Secret',
+              respond_mode: (cfg.respondMode as string) || 'immediate',
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'workflow_id,node_id' }
+          );
+        }
+      }
+
+      const scheduleNodes = nodes.filter((n) => n.type === 'schedule-trigger');
+      if (scheduleNodes.length === 0) {
+        const schedBuilder = supabase.from('workflow_schedules');
+        if (schedBuilder && typeof schedBuilder.delete === 'function') {
+          await schedBuilder.delete().eq('workflow_id', workflowId);
+        }
+      } else {
+        for (const node of scheduleNodes) {
+          const cfg = (node.data?.config || {}) as Record<string, unknown>;
+          const cron = (cfg.cron as string) || '0 * * * *';
+          const timezone = (cfg.timezone as string) || 'UTC';
+          const enabled = cfg.enabled !== false;
+          const nextRunAt = new Date(Date.now() + 3600000).toISOString();
+          await supabase.from('workflow_schedules').upsert(
+            {
+              workflow_id: workflowId,
+              workspace_id: workspaceId,
+              node_id: node.id,
+              cron_expression: cron,
+              timezone,
+              enabled,
+              next_run_at: nextRunAt,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'workflow_id,node_id' }
+          );
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to sync workflow triggers:', err);
+    }
+  },
+
+  /**
+   * Toggle workflow active/inactive status.
+   */
+  async setWorkflowActive(workflowId: string, isActive: boolean): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('workflows')
+        .update({
+          is_active: isActive,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', workflowId);
+
+      if (error) return { error: error.message };
+      return { error: null };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : 'Failed to update workflow active state' };
     }
   },
 

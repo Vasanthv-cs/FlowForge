@@ -22,7 +22,7 @@ describe('Database Schema Types and Validation (Batch 1)', () => {
   });
 
   it('validates execution statuses according to database check constraint', () => {
-    const validStatuses = ['queued', 'running', 'success', 'failed', 'cancelled', 'waiting'] as const;
+    const validStatuses = ['queued', 'running', 'success', 'failed', 'cancelled', 'waiting', 'interrupted'] as const;
     for (const status of validStatuses) {
       expect(executionStatusSchema.parse(status)).toBe(status);
     }

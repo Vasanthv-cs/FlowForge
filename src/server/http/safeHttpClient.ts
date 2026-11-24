@@ -353,7 +353,7 @@ export async function safeHttpRequest(
   dnsResolver?: typeof dns.promises.lookup
 ): Promise<SafeResponse> {
   const method = (options.method || 'GET').toUpperCase();
-  const headers = { ...(options.headers || {}) };
+  let headers = { ...(options.headers || {}) };
   const timeoutMs = options.timeoutMs ?? 10000;
   const maxResponseBytes = options.maxResponseBytes ?? 2 * 1024 * 1024; // 2MB default
   const maxRedirects = options.maxRedirects ?? 3;
@@ -545,6 +545,35 @@ export async function safeHttpRequest(
 
       // Resolve relative redirect against current URL
       const nextUrl = new URL(response.redirectLocation, currentUrl).toString();
+
+      // Check for cross-origin redirect and strip sensitive authorization headers
+      try {
+        const prevOrigin = new URL(currentUrl).origin;
+        const nextOrigin = new URL(nextUrl).origin;
+        if (prevOrigin !== nextOrigin) {
+          const strippedHeaders: Record<string, string> = {};
+          for (const [k, v] of Object.entries(headers)) {
+            const lower = k.toLowerCase();
+            if (
+              lower === 'authorization' ||
+              lower === 'proxy-authorization' ||
+              lower === 'cookie' ||
+              lower === 'x-api-key' ||
+              lower.includes('secret') ||
+              lower.includes('token')
+            ) {
+              continue;
+            }
+            strippedHeaders[k] = v;
+          }
+          headers = strippedHeaders;
+        }
+      } catch {
+        // Fallback: If URL parsing fails, continue to next iteration where validateUrlSyntax handles it
+      }
+
+      delete headers['Host'];
+      delete headers['host'];
       currentUrl = nextUrl;
       continue;
     }

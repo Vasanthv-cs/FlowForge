@@ -83,6 +83,24 @@ export function ExecutionTimeline({ events }: ExecutionTimelineProps) {
                 ) : null}
 
                 <span className="text-gray-300 truncate">{ev.message}</span>
+
+                {Boolean(ev.details?.reused) && (
+                  <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[9px] font-mono shrink-0">
+                    REUSED
+                  </span>
+                )}
+
+                {Boolean(ev.details?.selectedBranch) && (
+                  <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono shrink-0">
+                    BRANCH: {String(ev.details?.selectedBranch).toUpperCase()}
+                  </span>
+                )}
+
+                {Boolean(ev.details?.retryCount && Number(ev.details.retryCount) > 0) && (
+                  <span className="px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 text-[9px] font-mono shrink-0">
+                    RETRY #{String(ev.details?.retryCount)}
+                  </span>
+                )}
               </div>
 
               {ev.durationMs !== undefined && ev.durationMs > 0 && (

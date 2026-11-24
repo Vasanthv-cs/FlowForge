@@ -1,11 +1,20 @@
-import { WorkflowEngine } from '@flowforge/workflow-core';
-import type { WorkflowRunResult, TimelineEvent } from '@flowforge/workflow-core';
+import {
+  WorkflowEngine,
+  analyzeWorkflowGraph,
+  partitionWorkflowForReplay,
+  buildReplayEngineOptions,
+} from '@flowforge/workflow-core';
+import type { WorkflowRunResult, TimelineEvent, EngineRunOptions } from '@flowforge/workflow-core';
 import type { NodeExecutionRecord } from '@flowforge/node-sdk';
-import { analyzeWorkflowGraph } from '@flowforge/workflow-core';
 import { serverNodeRegistry } from '../engine/serverRegistry.ts';
 import { getSupabaseAdminClient } from '../supabase.ts';
 import { redactSensitiveData } from '@flowforge/shared';
 import { randomUUID } from 'node:crypto';
+import { durableWorker } from './durableWorkerService.ts';
+import {
+  assertValidTransition,
+  normalizeExecutionStatus,
+} from '../engine/executionStateMachine.ts';
 
 export interface ExecuteWorkflowParams {
   workspaceId: string;
@@ -50,6 +59,9 @@ export class ExecutionEngineService {
     workflowId: string;
     versionId?: string;
     triggerPayload?: Record<string, unknown>;
+    triggerType?: string;
+    scheduleId?: string;
+    scheduledFor?: string;
     userId?: string;
     waitForCompletion?: boolean;
   }): Promise<{
@@ -58,7 +70,17 @@ export class ExecutionEngineService {
     startedAt: string;
     result?: WorkflowRunResult;
   }> {
-    const { workspaceId, workflowId, versionId, triggerPayload, userId, waitForCompletion } = params;
+    const {
+      workspaceId,
+      workflowId,
+      versionId,
+      triggerPayload,
+      triggerType = 'manual',
+      scheduleId,
+      scheduledFor,
+      userId,
+      waitForCompletion,
+    } = params;
 
     // 1. Enforce Concurrency Limits
     const currentActive = this.getActiveCount(workspaceId);
@@ -158,7 +180,9 @@ export class ExecutionEngineService {
         workflow_id: workflowId,
         workflow_version_id: versionId || null,
         status: 'running',
-        trigger_type: 'manual',
+        trigger_type: triggerType,
+        schedule_id: scheduleId || null,
+        scheduled_for: scheduledFor || null,
         input_payload: {
           definition: safeSnapshot,
           triggerPayload: safeTriggerPayload,
@@ -194,7 +218,8 @@ export class ExecutionEngineService {
       rawNodes,
       rawEdges,
       abortController,
-      triggerPayload
+      triggerPayload,
+      workspaceId
     );
 
     if (waitForCompletion) {
@@ -220,6 +245,257 @@ export class ExecutionEngineService {
   }
 
   /**
+   * Replays an execution from a specific node using saved historical data.
+   * Reuses upstream node execution records, optionally accepts edited inputs,
+   * enforces safe replay mode (mocking external HTTP requests with recorded outputs),
+   * links the new execution to the original run, and preserves the original execution record.
+   */
+  public async replayWorkflowExecution(params: {
+    workspaceId: string;
+    originalExecutionId: string;
+    targetNodeId: string;
+    editedInput?: Record<string, unknown>;
+    safeReplay?: boolean;
+    userId?: string;
+    waitForCompletion?: boolean;
+  }): Promise<{
+    executionId: string;
+    status: 'running' | 'success' | 'failed';
+    replayedFromExecutionId: string;
+    replayFromNodeId: string;
+    reusedNodeIds: string[];
+    reexecutedNodeIds: string[];
+    safeReplay: boolean;
+    startedAt: string;
+    result?: WorkflowRunResult;
+  }> {
+    const {
+      workspaceId,
+      originalExecutionId,
+      targetNodeId,
+      editedInput,
+      safeReplay = true,
+      userId,
+      waitForCompletion,
+    } = params;
+
+    // 1. Enforce Concurrency Limits
+    const currentActive = this.getActiveCount(workspaceId);
+    if (currentActive >= this.MAX_CONCURRENT_PER_WORKSPACE) {
+      const err = new Error(
+        `Workspace execution limit reached: maximum of ${this.MAX_CONCURRENT_PER_WORKSPACE} concurrent executions allowed.`
+      );
+      (err as { statusCode?: number }).statusCode = 429;
+      throw err;
+    }
+
+    const supabase = getSupabaseAdminClient();
+
+    // 2. Fetch original execution, validating workspace isolation
+    const { data: origData, error: origError } = await supabase
+      .from('executions')
+      .select('id, workflow_id, workflow_version_id, input_payload, workflows!inner(workspace_id, name)')
+      .eq('id', originalExecutionId)
+      .eq('workflows.workspace_id', workspaceId)
+      .maybeSingle();
+
+    if (origError || !origData) {
+      const err = new Error('Original execution was not found in this workspace.');
+      (err as { statusCode?: number }).statusCode = 404;
+      throw err;
+    }
+
+    const origInputPayload = (origData.input_payload || {}) as Record<string, unknown>;
+    let definition = origInputPayload.definition as { nodes: unknown[]; edges: unknown[]; name?: string } | undefined;
+
+    // Fallback: if definition was not snapshotted into input_payload, retrieve from version or workflow
+    if (!definition || !Array.isArray(definition.nodes)) {
+      if (origData.workflow_version_id) {
+        const { data: vData } = await supabase
+          .from('workflow_versions')
+          .select('definition')
+          .eq('id', origData.workflow_version_id)
+          .maybeSingle();
+        if (vData?.definition) definition = vData.definition as typeof definition;
+      }
+      if (!definition || !Array.isArray(definition.nodes)) {
+        const { data: wData } = await supabase
+          .from('workflows')
+          .select('definition')
+          .eq('id', origData.workflow_id)
+          .maybeSingle();
+        if (wData?.definition) definition = wData.definition as typeof definition;
+      }
+    }
+
+    if (!definition || !Array.isArray(definition.nodes) || !Array.isArray(definition.edges)) {
+      const err = new Error('Could not resolve authoritative workflow snapshot definition for historical replay.');
+      (err as { statusCode?: number }).statusCode = 400;
+      throw err;
+    }
+
+    // 3. Fetch node execution history from original execution
+    const { data: nodeData, error: nodeError } = await supabase
+      .from('node_executions')
+      .select('node_id, node_type, node_label, status, input_payload, output_payload, error_message, duration_ms')
+      .eq('execution_id', originalExecutionId);
+
+    if (nodeError) {
+      throw new Error(`Failed to load historical node execution data: ${nodeError.message}`);
+    }
+
+    const originalRecords: Record<string, NodeExecutionRecord> = {};
+    for (const n of nodeData || []) {
+      originalRecords[n.node_id] = {
+        nodeId: n.node_id,
+        nodeLabel: n.node_label || n.node_id,
+        nodeType: n.node_type,
+        state: n.status === 'success' || n.status === 'reused' ? 'success' : (n.status as never),
+        outputData: (n.output_payload as Record<string, unknown>) || {},
+        inputData: (n.input_payload as Record<string, unknown>) || {},
+        error: n.error_message || undefined,
+        durationMs: n.duration_ms || 0,
+      };
+    }
+
+    // 4. Partition nodes for Replay
+    const partition = partitionWorkflowForReplay(
+      definition.nodes as never,
+      definition.edges as never,
+      targetNodeId,
+      originalRecords
+    );
+
+    const replayEngineOptions = buildReplayEngineOptions({
+      replayedFromExecutionId: originalExecutionId,
+      targetNodeId,
+      partition,
+      originalRecords,
+      editedInput,
+      safeReplayMode: safeReplay,
+      baseOptions: {
+        workspaceId,
+      },
+    });
+
+    // 5. Generate Execution ID and Record in Database
+    const newExecutionId = randomUUID();
+    const startTimeIso = new Date().toISOString();
+    const abortController = new AbortController();
+
+    this.activeExecutions.set(newExecutionId, {
+      executionId: newExecutionId,
+      workspaceId,
+      workflowId: origData.workflow_id,
+      abortController,
+      startedAt: Date.now(),
+    });
+
+    const workflowName = (origData.workflows as unknown as { name?: string })?.name || 'Replayed Workflow';
+
+    const safeSnapshot = redactSensitiveData({
+      id: origData.workflow_id,
+      name: workflowName,
+      nodes: definition.nodes,
+      edges: definition.edges,
+    });
+
+    const replayMetadata = {
+      replayedFromExecutionId: originalExecutionId,
+      replayFromNodeId: targetNodeId,
+      isReplay: true,
+      safeReplay,
+      reusedNodeIds: partition.reusedNodeIds,
+      reexecutedNodeIds: partition.reexecutedNodeIds,
+    };
+
+    // Database persistence: initial execution record
+    try {
+      const { error: insertError } = await supabase.from('executions').insert({
+        id: newExecutionId,
+        workflow_id: origData.workflow_id,
+        workflow_version_id: origData.workflow_version_id || null,
+        status: 'running',
+        trigger_type: 'replay',
+        input_payload: {
+          definition: safeSnapshot,
+          replayedFromExecutionId: originalExecutionId,
+          replayFromNodeId: targetNodeId,
+          safeReplay,
+          editedInput: editedInput ? redactSensitiveData(editedInput) : undefined,
+          metadata: replayMetadata,
+        },
+        started_at: startTimeIso,
+        created_by: userId || null,
+      });
+
+      if (insertError) {
+        this.activeExecutions.delete(newExecutionId);
+        throw new Error(`Failed to create replay execution record in database: ${insertError.message}`);
+      }
+
+      const targetNode = (definition.nodes as Array<{ id: string; data?: { label?: string } }>).find(
+        (n) => n.id === targetNodeId
+      );
+      const targetLabel = targetNode?.data?.label || targetNodeId;
+
+      await supabase.from('execution_events').insert({
+        execution_id: newExecutionId,
+        event_type: 'workflow_started',
+        message: `Workflow replay initiated from node "${targetLabel}" (original run: ${originalExecutionId.slice(0, 8)}). Safe mode: ${safeReplay ? 'ON' : 'OFF'}.`,
+        metadata: {
+          ...replayMetadata,
+          versionId: origData.workflow_version_id || null,
+        },
+      });
+    } catch (persistErr) {
+      this.activeExecutions.delete(newExecutionId);
+      throw persistErr;
+    }
+
+    // 6. Run Execution
+    const runPromise = this.executeCoreEngine(
+      newExecutionId,
+      definition.nodes,
+      definition.edges,
+      abortController,
+      undefined,
+      workspaceId,
+      replayEngineOptions
+    );
+
+    if (waitForCompletion) {
+      const result = await runPromise;
+      return {
+        executionId: newExecutionId,
+        status: result.success ? 'success' : 'failed',
+        replayedFromExecutionId: originalExecutionId,
+        replayFromNodeId: targetNodeId,
+        reusedNodeIds: partition.reusedNodeIds,
+        reexecutedNodeIds: partition.reexecutedNodeIds,
+        safeReplay,
+        startedAt: startTimeIso,
+        result,
+      };
+    }
+
+    runPromise.catch((err) => {
+      console.error(`[ExecutionEngine] Unhandled error in replay execution ${newExecutionId}:`, err);
+    });
+
+    return {
+      executionId: newExecutionId,
+      status: 'running',
+      replayedFromExecutionId: originalExecutionId,
+      replayFromNodeId: targetNodeId,
+      reusedNodeIds: partition.reusedNodeIds,
+      reexecutedNodeIds: partition.reexecutedNodeIds,
+      safeReplay,
+      startedAt: startTimeIso,
+    };
+  }
+
+  /**
    * Core execution runner: executes DAG, handles timeline events, and finalizes database records.
    */
   private async executeCoreEngine(
@@ -227,7 +503,9 @@ export class ExecutionEngineService {
     nodes: unknown[],
     edges: unknown[],
     abortController: AbortController,
-    _triggerPayload?: Record<string, unknown>
+    _triggerPayload?: Record<string, unknown>,
+    workspaceId?: string,
+    extraOptions?: Partial<EngineRunOptions>
   ): Promise<WorkflowRunResult> {
     const supabase = getSupabaseAdminClient();
     const engine = new WorkflowEngine(serverNodeRegistry);
@@ -243,8 +521,11 @@ export class ExecutionEngineService {
         nodes as never,
         edges as never,
         {
+          workspaceId,
           maxConcurrency: 4,
           timeoutMs: this.MAX_WORKFLOW_TIMEOUT_MS,
+          overrideTriggerPayload: _triggerPayload,
+          ...extraOptions,
           onTimelineEvent: (event: TimelineEvent) => {
             // Stream timeline event to database
             Promise.resolve(
@@ -258,6 +539,7 @@ export class ExecutionEngineService {
                   metadata: event.details ? redactSensitiveData(event.details) : null,
                 })
             ).catch((err: unknown) => console.warn('[ExecutionEngine] Failed to persist event:', err));
+            extraOptions?.onTimelineEvent?.(event);
           },
         },
         serverNodeRegistry
@@ -299,7 +581,7 @@ export class ExecutionEngineService {
         node_id: rec.nodeId,
         node_type: rec.nodeType,
         node_label: rec.nodeLabel || null,
-        status: rec.state,
+        status: rec.isReused ? 'reused' : rec.state,
         input_payload: rec.inputData ? redactSensitiveData(rec.inputData) : null,
         output_payload: rec.outputData ? redactSensitiveData(rec.outputData) : null,
         error_message: rec.error || null,
@@ -359,7 +641,9 @@ export class ExecutionEngineService {
   }
 
   /**
-   * Safely cancels an active execution.
+   * Safely cancels an active or queued execution.
+   * Enforces state machine immutability: completed executions cannot be cancelled,
+   * and late completions cannot overwrite a cancelled execution.
    */
   public async cancelExecution(
     workspaceId: string,
@@ -378,11 +662,37 @@ export class ExecutionEngineService {
       this.activeExecutions.delete(executionId);
     }
 
+    // Also cancel on durable background worker if active there
+    durableWorker.cancelActiveJob(executionId, 'Workflow execution cancelled by user request.');
+
     const supabase = getSupabaseAdminClient();
+
+    // Check existing state to reject invalid cancellations (e.g. already completed)
+    const { data: existingRecord } = await supabase
+      .from('executions')
+      .select('status, cancellation_requested')
+      .eq('id', executionId)
+      .maybeSingle();
+
+    if (existingRecord) {
+      const currentStatus = normalizeExecutionStatus(existingRecord.status);
+      if (currentStatus === 'success') {
+        const err = new Error('Cannot cancel a completed execution.');
+        (err as { statusCode?: number }).statusCode = 400;
+        throw err;
+      }
+      if (currentStatus === 'cancelled') {
+        return { success: true, message: 'Execution was already cancelled.' };
+      }
+      assertValidTransition(currentStatus, 'cancelled', executionId);
+    }
+
     const { error } = await supabase
       .from('executions')
       .update({
         status: 'cancelled',
+        cancellation_requested: true,
+        cancellation_reason: 'Workflow execution cancelled by user request.',
         error_message: 'Execution cancelled by user request',
         finished_at: new Date().toISOString(),
       })

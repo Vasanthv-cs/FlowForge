@@ -30,7 +30,8 @@
       "@flowforge/workflow-schema": ["./packages/workflow-schema/src/index.ts"],
       "@flowforge/node-sdk": ["./packages/node-sdk/src/index.ts"],
       "@flowforge/shared": ["./packages/shared/src/index.ts"],
-      "@flowforge/workflow-core": ["./packages/workflow-core/src/index.ts"]
+      "@flowforge/workflow-core": ["./packages/workflow-core/src/index.ts"],
+      "@flowforge/cli": ["./packages/cli/src/index.ts"]
     }
   },
   "include": ["src", "packages"]
